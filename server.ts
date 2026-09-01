@@ -3,16 +3,30 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { MercadoPagoConfig, Payment, PreApproval } from "mercadopago";
+import { getStoredSubscription, saveSubscriptionStatus } from "./subscriptionStore";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Hospedagens como Render/Railway/Cloud Run atribuem a porta dinamicamente via $PORT —
+  // escutar numa porta fixa faz o deploy nunca ficar "healthy" nesses ambientes.
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json({ limit: '5mb' }));
 
-  // Initialize Mercado Pago SDK securely server-side with strict sanitization
+  // Preço e marcador da Licença Vitalícia (pagamento único via PIX). O prefixo no
+  // external_reference é o que permite reconhecer, no webhook e no polling, que um
+  // pagamento aprovado é ESSA compra específica — e não outra cobrança qualquer.
+  const LIFETIME_LICENSE_PRICE = 89.90;
+  const LIFETIME_REFERENCE_PREFIX = 'lifetime-license_';
+
+  // Initialize Mercado Pago SDK securely server-side with strict sanitization.
+  // NUNCA usar um token de fallback hardcoded aqui: um access token é uma credencial secreta
+  // (autoriza criar cobranças e ler assinaturas de qualquer cliente) e precisa vir só do ambiente.
   const getMercadoPagoClient = () => {
-    const rawAccessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || "APP_USR-7994826052633681-072915-6f951cb5f6532674af3471e9603ad55d-132331003";
+    const rawAccessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!rawAccessToken) {
+      throw new Error('MERCADO_PAGO_ACCESS_TOKEN não configurado no ambiente do servidor.');
+    }
     const accessToken = rawAccessToken.trim().replace(/^["']|["']$/g, '').replace(/[\r\n]+/g, '');
     console.log("Mercado Pago Access Token loaded (prefix):", accessToken.substring(0, 12) + "...");
     return new MercadoPagoConfig({
@@ -133,25 +147,52 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
       const topic = notification?.type || notification?.topic;
       const dataId = notification?.data?.id || notification?.id;
 
-      if (topic === 'subscription_preapproval' || topic === 'preapproval' || topic === 'payment') {
+      if ((topic === 'subscription_preapproval' || topic === 'preapproval') && dataId) {
         console.log(`Processing MP subscription notification topic: ${topic} for ID: ${dataId}`);
-        
-        // If it's a preapproval/subscription event, we can fetch subscription details or update user status
-        if (dataId) {
-          try {
-            const client = getMercadoPagoClient();
-            const preApproval = new PreApproval(client);
-            const subDetails = await preApproval.get({ id: dataId });
-            console.log("Subscription details fetched from MP:", {
-              id: subDetails.id,
-              status: subDetails.status,
-              payer_email: subDetails.payer_email,
-              external_reference: subDetails.external_reference
-            });
-            // Here you can synchronize with Firestore based on subDetails.status ('authorized', 'paused', 'cancelled')
-          } catch (fetchErr) {
-            console.warn("Could not fetch subscription details during webhook:", fetchErr);
+
+        // Busca o estado atual da assinatura (preapproval) e PERSISTE — é a fonte confiável de
+        // "esse e-mail tem assinatura recorrente ativa?" usada por /api/mercadopago/status.
+        try {
+          const client = getMercadoPagoClient();
+          const preApproval = new PreApproval(client);
+          const subDetails = await preApproval.get({ id: dataId });
+          console.log("Subscription details fetched from MP:", {
+            id: subDetails.id,
+            status: subDetails.status,
+            payer_email: subDetails.payer_email,
+            external_reference: subDetails.external_reference
+          });
+
+          if (subDetails.payer_email && subDetails.status) {
+            saveSubscriptionStatus(subDetails.payer_email, subDetails.status, subDetails.id);
+          } else {
+            console.warn("Webhook de preapproval sem payer_email ou status utilizável; nada foi persistido.", { id: dataId });
           }
+        } catch (fetchErr) {
+          console.warn("Could not fetch subscription details during webhook:", fetchErr);
+        }
+      } else if (topic === 'payment' && dataId) {
+        // Eventos de 'payment' representam cobranças individuais. A maioria (cobranças
+        // recorrentes de uma assinatura já autorizada) é só informativa aqui — quem decide
+        // 'authorized'/'cancelled' da assinatura é sempre o evento de preapproval acima.
+        // A EXCEÇÃO é a Licença Vitalícia via PIX: como é pagamento único (não tem preapproval),
+        // é este evento que confirma a compra e libera o acesso permanente.
+        console.log(`Received MP payment notification for ID: ${dataId}`);
+        try {
+          const client = getMercadoPagoClient();
+          const payment = new Payment(client);
+          const paymentDetails = await payment.get({ id: dataId });
+
+          const isLifetimePurchase = !!paymentDetails.external_reference?.startsWith(LIFETIME_REFERENCE_PREFIX);
+          const amountMatches = Number(paymentDetails.transaction_amount) === LIFETIME_LICENSE_PRICE;
+
+          if (isLifetimePurchase && paymentDetails.status === 'approved' && paymentDetails.payer?.email && amountMatches) {
+            saveSubscriptionStatus(paymentDetails.payer.email, 'lifetime', paymentDetails.id);
+          } else {
+            console.log(`Payment ${dataId} não persistido como Licença Vitalícia (status=${paymentDetails.status}, isLifetimePurchase=${isLifetimePurchase}, amountMatches=${amountMatches}).`);
+          }
+        } catch (fetchErr) {
+          console.warn("Could not fetch payment details during webhook:", fetchErr);
         }
       }
 
@@ -162,9 +203,149 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
     }
   });
 
-  app.get("/api/mercadopago/status", (req, res) => {
-    const email = req.query.email as string;
-    res.json({ status: "ativo", email, plano_ativo: true, subscriptionId: "sub-prod-mp-verified" });
+  // Verifica de verdade no Mercado Pago se o e-mail tem uma assinatura (PreApproval) autorizada.
+  // Antes este endpoint devolvia "ativo" fixo para qualquer e-mail, liberando o app pago de graça
+  // para todo mundo — a checagem no App.tsx confiava cegamente nessa resposta.
+  app.get("/api/mercadopago/status", async (req, res) => {
+    const email = (req.query.email as string || '').trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({ status: 'pendente', plano_ativo: false, error: 'E-mail é obrigatório para verificar a assinatura.' });
+    }
+
+    // 1. Caminho rápido: status já persistido pelo webhook (não depende de nova chamada ao MP).
+    // 'authorized' = assinatura mensal recorrente ativa; 'lifetime' = Licença Vitalícia paga via PIX.
+    const cached = getStoredSubscription(email);
+    if (cached) {
+      const cachedIsActive = cached.status === 'authorized' || cached.status === 'lifetime';
+      return res.json({
+        status: cachedIsActive ? 'ativo' : cached.status,
+        email,
+        plano_ativo: cachedIsActive,
+        subscriptionId: cached.subscriptionId,
+        source: 'cache',
+        updatedAt: cached.updatedAt
+      });
+    }
+
+    // 2. Sem registro local ainda (ex.: primeira verificação antes de qualquer webhook chegar):
+    // consulta ao vivo no Mercado Pago e, se encontrar algo, já alimenta o cache para a próxima vez.
+    try {
+      const client = getMercadoPagoClient();
+      const preApproval = new PreApproval(client);
+
+      const searchResult = await preApproval.search({
+        options: { payer_email: email }
+      });
+
+      const subscriptions = searchResult?.results || [];
+      // 'authorized' é o único status do PreApproval que representa uma assinatura recorrente ativa.
+      const activeSubscription = subscriptions.find((s) => s.status === 'authorized');
+
+      if (activeSubscription) {
+        saveSubscriptionStatus(email, activeSubscription.status || 'authorized', activeSubscription.id);
+        return res.json({
+          status: 'ativo',
+          email,
+          plano_ativo: true,
+          subscriptionId: activeSubscription.id,
+          source: 'live'
+        });
+      }
+
+      // Sem assinatura autorizada: devolve o status mais recente encontrado (pending, paused, cancelled...)
+      // ou 'nenhuma' se o e-mail nunca teve nenhuma assinatura no Mercado Pago.
+      const mostRecent = subscriptions[0];
+      if (mostRecent) {
+        saveSubscriptionStatus(email, mostRecent.status || 'pendente', mostRecent.id);
+      }
+      return res.json({
+        status: mostRecent ? (mostRecent.status || 'pendente') : 'nenhuma',
+        email,
+        plano_ativo: false,
+        subscriptionId: mostRecent?.id || null,
+        source: 'live'
+      });
+    } catch (error: any) {
+      console.error("Mercado Pago subscription status check error:", error);
+      // Falha ao consultar o Mercado Pago: NÃO libera acesso (fail-closed). Devolve 200 com status
+      // não-ativo em vez de 5xx para não forçar logout imediato do usuário por uma falha transitória.
+      return res.json({
+        status: 'pendente',
+        email,
+        plano_ativo: false,
+        error: 'Não foi possível verificar a assinatura no Mercado Pago no momento.'
+      });
+    }
+  });
+
+  // Gera um pagamento PIX real via Mercado Pago para a Licença Vitalícia (pagamento único).
+  // Substitui o fluxo antigo, que chamava um Google Apps Script externo e caía para um
+  // código PIX ESTÁTICO hardcoded apontando para a chave pessoal de terceiro (miguel@gmail.com)
+  // quando esse script falhava — ninguém verificava o pagamento, e o dinheiro nem ia para a conta certa.
+  app.post("/api/mercadopago/create-pix-payment", async (req, res) => {
+    try {
+      const email = (req.body?.email || '').trim().toLowerCase();
+      const name = (req.body?.name || '').trim();
+
+      if (!email) {
+        return res.status(400).json({ error: 'E-mail é obrigatório para gerar o pagamento PIX.' });
+      }
+
+      const client = getMercadoPagoClient();
+      const payment = new Payment(client);
+
+      const result = await payment.create({
+        body: {
+          transaction_amount: LIFETIME_LICENSE_PRICE,
+          description: 'Licença Vitalícia - Margem de Chef',
+          payment_method_id: 'pix',
+          payer: {
+            email,
+            first_name: name ? name.split(' ')[0] : undefined
+          },
+          external_reference: `${LIFETIME_REFERENCE_PREFIX}${email}`
+        }
+      });
+
+      const txData = result.point_of_interaction?.transaction_data;
+      if (!txData?.qr_code) {
+        throw new Error('Mercado Pago não retornou os dados do QR Code PIX.');
+      }
+
+      res.json({
+        paymentId: result.id,
+        status: result.status,
+        amount: result.transaction_amount,
+        qrCode: txData.qr_code,
+        qrCodeBase64: txData.qr_code_base64
+      });
+    } catch (error: any) {
+      console.error("Erro ao criar pagamento PIX:", error);
+      res.status(500).json({ error: error.message || 'Não foi possível gerar o PIX agora. Tente novamente em instantes ou fale com o suporte.' });
+    }
+  });
+
+  // Consulta o status de um pagamento PIX específico (usado pelo polling do modal de pagamento).
+  // Quando aprovado E identificado como a Licença Vitalícia (pelo external_reference), persiste
+  // o status 'lifetime' no mesmo cache usado por /api/mercadopago/status — não depende só do
+  // webhook chegar, o que importa caso ele não esteja configurado no painel do Mercado Pago.
+  app.get("/api/mercadopago/payment-status/:id", async (req, res) => {
+    try {
+      const client = getMercadoPagoClient();
+      const payment = new Payment(client);
+      const result = await payment.get({ id: req.params.id });
+
+      const isLifetimePurchase = !!result.external_reference?.startsWith(LIFETIME_REFERENCE_PREFIX);
+      if (isLifetimePurchase && result.status === 'approved' && result.payer?.email) {
+        saveSubscriptionStatus(result.payer.email, 'lifetime', result.id);
+      }
+
+      res.json({ status: result.status, id: result.id });
+    } catch (error: any) {
+      console.error("Erro ao consultar status do pagamento PIX:", error);
+      res.status(500).json({ error: 'Não foi possível consultar o status do pagamento no momento.' });
+    }
   });
 
   // Securely provide public key to frontend with strict sanitization and fallback
@@ -216,7 +397,8 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
       console.log("Mercado Pago subscription response status:", response.id, response.status);
 
       if (response.status === 'authorized' || response.status === 'active' || response.status === 'pending') {
-        return res.json({ 
+        saveSubscriptionStatus(payer.email, response.status, response.id);
+        return res.json({
           success: true, 
           status: response.status,
           subscriptionId: response.id,

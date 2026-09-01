@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { BarChart3, Printer, AlertTriangle, CheckCircle2, TrendingUp, DollarSign, Search, ShieldAlert, Sparkles, ArrowRight } from 'lucide-react';
 import { TechnicalSheet, AppSettings } from '../types';
 
@@ -10,6 +10,17 @@ interface PricingReportTabProps {
   calculateSuggestedPrice: (costInsumo: number) => number;
   setPrintSheet: (sheet: TechnicalSheet) => void;
   onEditSheet?: (sheet: TechnicalSheet) => void;
+}
+
+interface SheetMetrics {
+  sheet: TechnicalSheet;
+  costInsumo: number;
+  sellPrice: number;
+  suggestedPrice: number;
+  activePrice: number;
+  cmvPct: number;
+  profitPct: number;
+  status: 'healthy' | 'warning' | 'danger';
 }
 
 export const PricingReportTab: React.FC<PricingReportTabProps> = ({
@@ -24,61 +35,47 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'healthy' | 'warning' | 'danger'>('all');
 
-  const filteredSheets = sheets.filter((sheet) => {
-    const matchesSearch = sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (sheet.category && sheet.category.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    if (!matchesSearch) return false;
+  const taxRate = Number(appSettings.defaultTaxRate) || 6;
+  const targetMargin = Number(appSettings.targetReturnMargin) || 20;
 
-    const costInsumo = Number(sheet.costPerPortion) || 0;
-    const sellPrice = Number(sheet.sellingPrice) || 0;
-    const suggestedPrice = calculateSuggestedPrice(costInsumo);
-    
-    // CORRECTION: If sellPrice is 0 or not defined, use suggestedPrice or cost * 3.5 for margin preview,
-    // but clearly display that sellingPrice is 0 (not set) in the table so user knows to set it.
-    const activePrice = sellPrice > 0 ? sellPrice : (suggestedPrice > 0 ? suggestedPrice : (costInsumo > 0 ? costInsumo * 3.5 : 0));
-    
-    const cmvPct = sellPrice > 0 && !isNaN(sheet.cmv) && sheet.cmv > 0 
-      ? sheet.cmv 
-      : (activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : (costInsumo === 0 ? 0 : 100));
-    
-    const taxRate = Number(appSettings.defaultTaxRate) || 6;
-    const targetMargin = Number(appSettings.targetReturnMargin) || 20;
-    const totalDeductions = cmvPct + fixedCostPct + variableCostPct + taxRate;
-    const profitPct = activePrice > 0 ? Number((100 - totalDeductions).toFixed(1)) : 0;
+  // Fonte única de cálculo: todo card, filtro e linha da tabela lê deste mesmo array,
+  // para que o número exibido no resumo NUNCA divirja do que aparece ao clicar/filtrar.
+  const allMetrics: SheetMetrics[] = useMemo(() => {
+    return sheets.map((sheet) => {
+      const costInsumo = Number(sheet.costPerPortion) || 0;
+      const sellPrice = Number(sheet.sellingPrice) || 0;
+      const suggestedPrice = calculateSuggestedPrice(costInsumo);
+      const activePrice = sellPrice > 0 ? sellPrice : (suggestedPrice > 0 ? suggestedPrice : (costInsumo > 0 ? costInsumo * 3.5 : 0));
 
-    if (statusFilter === 'healthy') return profitPct >= targetMargin;
-    if (statusFilter === 'warning') return profitPct >= 10 && profitPct < targetMargin;
-    if (statusFilter === 'danger') return profitPct < 10;
-    return true;
-  });
+      const cmvPct = sellPrice > 0 && !isNaN(sheet.cmv) && sheet.cmv > 0
+        ? sheet.cmv
+        : (activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : (costInsumo === 0 ? 0 : 100));
 
-  const healthyCount = sheets.filter(s => {
-    const cost = Number(s.costPerPortion) || 0;
-    const price = Number(s.sellingPrice) || calculateSuggestedPrice(cost);
-    const active = price > 0 ? price : cost * 3.5;
-    const cmv = s.sellingPrice > 0 && !isNaN(s.cmv) ? s.cmv : (active > 0 ? (cost/active)*100 : 0);
-    const p = 100 - (cmv + fixedCostPct + variableCostPct + (appSettings.defaultTaxRate || 6));
-    return p >= 20;
-  }).length;
+      const totalDeductions = cmvPct + fixedCostPct + variableCostPct + taxRate;
+      const profitPct = activePrice > 0 ? Number((100 - totalDeductions).toFixed(1)) : 0;
 
-  const warningCount = sheets.filter(s => {
-    const cost = Number(s.costPerPortion) || 0;
-    const price = Number(s.sellingPrice) || calculateSuggestedPrice(cost);
-    const active = price > 0 ? price : cost * 3.5;
-    const cmv = s.sellingPrice > 0 && !isNaN(s.cmv) ? s.cmv : (active > 0 ? (cost/active)*100 : 0);
-    const p = 100 - (cmv + fixedCostPct + variableCostPct + (appSettings.defaultTaxRate || 6));
-    return p >= 10 && p < 20;
-  }).length;
+      let status: SheetMetrics['status'] = 'healthy';
+      if (profitPct < 10) status = 'danger';
+      else if (profitPct < targetMargin) status = 'warning';
 
-  const dangerCount = sheets.filter(s => {
-    const cost = Number(s.costPerPortion) || 0;
-    const price = Number(s.sellingPrice) || calculateSuggestedPrice(cost);
-    const active = price > 0 ? price : cost * 3.5;
-    const cmv = s.sellingPrice > 0 && !isNaN(s.cmv) ? s.cmv : (active > 0 ? (cost/active)*100 : 0);
-    const p = 100 - (cmv + fixedCostPct + variableCostPct + (appSettings.defaultTaxRate || 6));
-    return p < 10;
-  }).length;
+      return { sheet, costInsumo, sellPrice, suggestedPrice, activePrice, cmvPct, profitPct, status };
+    });
+  }, [sheets, fixedCostPct, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
+
+  const healthyCount = allMetrics.filter(m => m.status === 'healthy').length;
+  const warningCount = allMetrics.filter(m => m.status === 'warning').length;
+  const dangerCount = allMetrics.filter(m => m.status === 'danger').length;
+
+  // Tabela ordenada da menor para a maior margem: os pratos mais arriscados aparecem primeiro.
+  const filteredMetrics = allMetrics
+    .filter((m) => {
+      const matchesSearch = m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (m.sheet.category && m.sheet.category.toLowerCase().includes(searchTerm.toLowerCase()));
+      if (!matchesSearch) return false;
+      if (statusFilter === 'all') return true;
+      return m.status === statusFilter;
+    })
+    .sort((a, b) => a.profitPct - b.profitPct);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -179,7 +176,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
         </div>
 
         <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-          <span className="text-xs text-slate-500 font-medium">Exibindo <strong className="text-slate-900 font-bold">{filteredSheets.length}</strong> de {sheets.length} itens</span>
+          <span className="text-xs text-slate-500 font-medium">Exibindo <strong className="text-slate-900 font-bold">{filteredMetrics.length}</strong> de {sheets.length} itens</span>
         </div>
       </div>
 
@@ -187,6 +184,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900 uppercase tracking-wider">Tabela Detalhada de Preços & Status de Saúde</h3>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ordenado do maior risco para o maior lucro</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -204,45 +202,38 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filteredSheets.length === 0 ? (
+              {filteredMetrics.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-10 text-center text-slate-400 italic">
                     Nenhum prato encontrado com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                filteredSheets.map((sheet) => {
-                  const costInsumo = Number(sheet.costPerPortion) || 0;
-                  const sellPrice = Number(sheet.sellingPrice) || 0;
-                  const suggestedPrice = calculateSuggestedPrice(costInsumo);
-                  const activePrice = sellPrice > 0 ? sellPrice : (suggestedPrice > 0 ? suggestedPrice : (costInsumo > 0 ? costInsumo * 3.5 : 0));
-
-                  const cmvPct = sellPrice > 0 && !isNaN(sheet.cmv) && sheet.cmv > 0 
-                    ? sheet.cmv 
-                    : (activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : (costInsumo === 0 ? 0 : 100));
-                  
-                  const taxRate = Number(appSettings.defaultTaxRate) || 6;
-                  const targetMargin = Number(appSettings.targetReturnMargin) || 20;
-                  const totalDeductions = cmvPct + fixedCostPct + variableCostPct + taxRate;
-                  const profitPct = activePrice > 0 ? Number((100 - totalDeductions).toFixed(1)) : 0;
-
+                filteredMetrics.map(({ sheet, costInsumo, sellPrice, suggestedPrice, cmvPct, profitPct, status }) => {
                   let statusLabel = 'Saudável 🟢';
                   let statusBg = 'bg-emerald-100 text-emerald-900 border-emerald-300';
                   let statusDesc = 'Excelente margem de lucro';
+                  let barColor = 'bg-emerald-500';
 
                   if (profitPct < 0) {
                     statusLabel = 'Prejuízo ⛔';
                     statusBg = 'bg-red-200 text-red-900 border-red-300 font-bold';
                     statusDesc = 'Preço abaixo do custo total!';
-                  } else if (profitPct < 10) {
+                    barColor = 'bg-red-600';
+                  } else if (status === 'danger') {
                     statusLabel = 'Em Risco 🟠';
                     statusBg = 'bg-orange-100 text-orange-900 border-orange-300';
                     statusDesc = 'Lucro muito baixo, risco de prejuízo';
-                  } else if (profitPct < targetMargin) {
+                    barColor = 'bg-orange-500';
+                  } else if (status === 'warning') {
                     statusLabel = 'Apertado 🟡';
                     statusBg = 'bg-amber-100 text-amber-900 border-amber-300';
                     statusDesc = 'Margem inferior à meta ideal';
+                    barColor = 'bg-amber-500';
                   }
+
+                  // Barra visual: 0% de margem = vazia, >= 2x a meta = cheia (limitada entre 0 e 100%)
+                  const barWidthPct = Math.max(0, Math.min(100, (profitPct / (targetMargin * 2)) * 100));
 
                   return (
                     <tr key={sheet.id} className="hover:bg-slate-50 transition-colors">
@@ -267,9 +258,12 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                         R$ {suggestedPrice.toFixed(2).replace('.', ',')}
                       </td>
 
-                      <td className="p-3.5 text-right font-mono">
-                        <div className={`font-black ${profitPct >= 20 ? 'text-emerald-700' : profitPct >= 10 ? 'text-amber-700' : 'text-red-700'}`}>
+                      <td className="p-3.5 text-right font-mono min-w-[110px]">
+                        <div className={`font-black ${profitPct >= targetMargin ? 'text-emerald-700' : profitPct >= 10 ? 'text-amber-700' : 'text-red-700'}`}>
                           {profitPct > 0 ? `+${profitPct.toFixed(1)}%` : `${profitPct.toFixed(1)}%`}
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-100 rounded-full mt-1.5 overflow-hidden">
+                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${barWidthPct}%` }} />
                         </div>
                       </td>
 

@@ -588,6 +588,25 @@ export function App() {
     }
   };
 
+  // Chamado quando o PixPaymentModal confirma (via /api/mercadopago/payment-status) que o
+  // pagamento da Licença Vitalícia foi aprovado de verdade no Mercado Pago. Antes, esse callback
+  // chamava handleActivateCode('VITALICIA-8990') — um código que não existe em lugar nenhum do
+  // app, então mesmo um pagamento aprovado não liberava nada. 'ativo' já é suficiente para
+  // isLicenseExpired nunca bloquear o usuário novamente, independentemente do licenseType.
+  const handleLifetimeLicenseConfirmed = () => {
+    if (!currentUser) return;
+    const updatedUser: User = {
+      ...currentUser,
+      status_assinatura: 'ativo'
+    };
+    setCurrentUser(updatedUser);
+    localStorage.setItem('basechef_current_user', JSON.stringify(updatedUser));
+
+    const updatedUsers = usersList.map((u) => (u.email === currentUser.email ? updatedUser : u));
+    setUsersList(updatedUsers);
+    localStorage.setItem('basechef_users_list', JSON.stringify(updatedUsers));
+  };
+
   const handleUpdateWhatsapp = (num: string) => {
     const updatedSettings = { ...appSettings, whatsappNumber: num };
     setAppSettings(updatedSettings);
@@ -1437,14 +1456,16 @@ export function App() {
           onClose={() => setIsPixModalOpen(false)}
           onLogout={handleLogout}
           onPaymentConfirmed={() => {
-            handleActivateCode('VITALICIA-8990');
+            handleLifetimeLicenseConfirmed();
             setIsPixModalOpen(false);
           }}
         />
       )}
 
-      {/* LICENSE EXPIRED BARRIER MODAL */}
-      {isLicenseExpired && currentUser && (
+      {/* LICENSE EXPIRED BARRIER MODAL — escondido enquanto o PixPaymentModal está aberto: os dois usam
+          fixed inset-0 com o mesmo z-index, e como este vem depois no JSX ele sempre ficaria por cima,
+          tornando o botão "Pagar via PIX Automático" clicável mas visualmente inacessível. */}
+      {isLicenseExpired && currentUser && !isPixModalOpen && (
         <LicenseBarrierModal
           user={currentUser}
           onActivateCode={handleActivateCode}
