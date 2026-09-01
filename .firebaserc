@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "default": "margem-de-chef-prod"
+  },
+  "targets": {
+    "margem-de-chef-prod": {
+      "hosting": {
+        "margem": [
+          "margem-de-chef-prod"
+        ],
+        "tarefas-basechef": [
+          "tarefas-basechef"
+        ]
+      }
+    }
+  }
+}

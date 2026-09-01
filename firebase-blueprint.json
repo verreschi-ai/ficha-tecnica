@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Usuario": {
+      "title": "Usuario",
+      "description": "Restaurant owner or user profile and subscription status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "restaurantName": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "status_assinatura": { "type": "string", "enum": ["ativo", "pendente", "cancelado", "expirado"] },
+        "licenseType": { "type": "string", "enum": ["daily", "monthly", "expired"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "name", "role"]
+    },
+    "Insumo": {
+      "title": "Insumo",
+      "description": "Raw ingredient or sub-recipe item with pricing and correction factor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "unit": { "type": "string" },
+        "unitPrice": { "type": "number" },
+        "grossQty": { "type": "number" },
+        "netQty": { "type": "number" },
+        "fc": { "type": "number" },
+        "isRecipe": { "type": "boolean" },
+        "userId": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "unit", "unitPrice", "userId"]
+    },
+    "Receita": {
+      "title": "Receita",
+      "description": "Technical sheet / recipe with ingredients list and calculated CMV/margin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "yieldServings": { "type": "number" },
+        "portionWeight": { "type": "string" },
+        "sellingPrice": { "type": "number" },
+        "costPerPortion": { "type": "number" },
+        "cmv": { "type": "number" },
+        "margin": { "type": "number" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "sellingPrice", "userId"]
+    }
+  },
+  "firestore": {
+    "/usuarios/{userId}": {
+      "schema": { "$ref": "#/entities/Usuario" },
+      "description": "User profiles collection"
+    },
+    "/insumos/{insumoId}": {
+      "schema": { "$ref": "#/entities/Insumo" },
+      "description": "Raw ingredients collection"
+    },
+    "/receitas/{receitaId}": {
+      "schema": { "$ref": "#/entities/Receita" },
+      "description": "Technical recipes and sheets collection"
+    }
+  }
+}
