@@ -5,11 +5,48 @@ import { GoogleGenAI } from "@google/genai";
 import { MercadoPagoConfig, Payment, PreApproval } from "mercadopago";
 import { getStoredSubscription, saveSubscriptionStatus } from "./subscriptionStore";
 
+// Rate limiter simples em memória, por IP — sem dependência nova. Existe para conter dois
+// abusos possíveis em rotas sem autenticação: varrer e-mails alheios em /mercadopago/status
+// e criar pagamentos PIX reais em massa em /create-pix-payment. Não substitui autenticação de
+// verdade (esse app não tem sessão de servidor), mas encarece bastante o abuso automatizado.
+const rateLimitBuckets = new Map<string, number[]>();
+function rateLimit(maxRequests: number, windowMs: number) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const key = `${req.ip || 'unknown'}:${req.path}`;
+    const now = Date.now();
+    const timestamps = (rateLimitBuckets.get(key) || []).filter((t) => now - t < windowMs);
+
+    if (timestamps.length >= maxRequests) {
+      return res.status(429).json({ error: 'Muitas requisições. Tente novamente em alguns minutos.' });
+    }
+
+    timestamps.push(now);
+    rateLimitBuckets.set(key, timestamps);
+    next();
+  };
+}
+
 async function startServer() {
   const app = express();
   // Hospedagens como Render/Railway/Cloud Run atribuem a porta dinamicamente via $PORT —
   // escutar numa porta fixa faz o deploy nunca ficar "healthy" nesses ambientes.
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Confia no proxy do Render/Cloudflare para que req.ip reflita o IP real do visitante
+  // (senão todo mundo cai no mesmo IP interno do proxy e o rate limit vira inútil).
+  app.set('trust proxy', 1);
+
+  // Headers de segurança básicos. Sem CSP de propósito: esse app carrega Google Fonts,
+  // o SDK do Mercado Pago e imagens do Unsplash de origens externas, e uma CSP genérica
+  // quebraria esses recursos sem um mapeamento cuidadoso de cada origem permitida.
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
 
   app.use(express.json({ limit: '5mb' }));
 
@@ -206,7 +243,8 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // Verifica de verdade no Mercado Pago se o e-mail tem uma assinatura (PreApproval) autorizada.
   // Antes este endpoint devolvia "ativo" fixo para qualquer e-mail, liberando o app pago de graça
   // para todo mundo — a checagem no App.tsx confiava cegamente nessa resposta.
-  app.get("/api/mercadopago/status", async (req, res) => {
+  // Limite generoso: uso normal chama isso 1x por sessão/troca de usuário, não em loop.
+  app.get("/api/mercadopago/status", rateLimit(30, 5 * 60 * 1000), async (req, res) => {
     const email = (req.query.email as string || '').trim().toLowerCase();
 
     if (!email) {
@@ -283,7 +321,8 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // Substitui o fluxo antigo, que chamava um Google Apps Script externo e caía para um
   // código PIX ESTÁTICO hardcoded apontando para a chave pessoal de terceiro (miguel@gmail.com)
   // quando esse script falhava — ninguém verificava o pagamento, e o dinheiro nem ia para a conta certa.
-  app.post("/api/mercadopago/create-pix-payment", async (req, res) => {
+  // Limite apertado: cada chamada cria uma cobrança PIX real no Mercado Pago da conta.
+  app.post("/api/mercadopago/create-pix-payment", rateLimit(5, 10 * 60 * 1000), async (req, res) => {
     try {
       const email = (req.body?.email || '').trim().toLowerCase();
       const name = (req.body?.name || '').trim();
@@ -330,7 +369,9 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // Quando aprovado E identificado como a Licença Vitalícia (pelo external_reference), persiste
   // o status 'lifetime' no mesmo cache usado por /api/mercadopago/status — não depende só do
   // webhook chegar, o que importa caso ele não esteja configurado no painel do Mercado Pago.
-  app.get("/api/mercadopago/payment-status/:id", async (req, res) => {
+  // Limite folgado: o modal do PIX faz polling automático a cada 5s (~12/min) enquanto aberto,
+  // então precisa de espaço pra isso mais os cliques manuais em "Já paguei, verificar agora".
+  app.get("/api/mercadopago/payment-status/:id", rateLimit(90, 5 * 60 * 1000), async (req, res) => {
     try {
       const client = getMercadoPagoClient();
       const payment = new Payment(client);
