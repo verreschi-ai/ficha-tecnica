@@ -244,7 +244,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // Antes este endpoint devolvia "ativo" fixo para qualquer e-mail, liberando o app pago de graça
   // para todo mundo — a checagem no App.tsx confiava cegamente nessa resposta.
   // Limite generoso: uso normal chama isso 1x por sessão/troca de usuário, não em loop.
-  app.get("/api/mercadopago/status", rateLimit(30, 5 * 60 * 1000), async (req, res) => {
+  app.get("/api/mercadopago/status", rateLimit(15, 5 * 60 * 1000), async (req, res) => {
     const email = (req.query.email as string || '').trim().toLowerCase();
 
     if (!email) {
@@ -322,7 +322,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // código PIX ESTÁTICO hardcoded apontando para a chave pessoal de terceiro (miguel@gmail.com)
   // quando esse script falhava — ninguém verificava o pagamento, e o dinheiro nem ia para a conta certa.
   // Limite apertado: cada chamada cria uma cobrança PIX real no Mercado Pago da conta.
-  app.post("/api/mercadopago/create-pix-payment", rateLimit(5, 10 * 60 * 1000), async (req, res) => {
+  app.post("/api/mercadopago/create-pix-payment", rateLimit(3, 10 * 60 * 1000), async (req, res) => {
     try {
       const email = (req.body?.email || '').trim().toLowerCase();
       const name = (req.body?.name || '').trim();
@@ -371,7 +371,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // webhook chegar, o que importa caso ele não esteja configurado no painel do Mercado Pago.
   // Limite folgado: o modal do PIX faz polling automático a cada 5s (~12/min) enquanto aberto,
   // então precisa de espaço pra isso mais os cliques manuais em "Já paguei, verificar agora".
-  app.get("/api/mercadopago/payment-status/:id", rateLimit(90, 5 * 60 * 1000), async (req, res) => {
+  app.get("/api/mercadopago/payment-status/:id", rateLimit(60, 5 * 60 * 1000), async (req, res) => {
     try {
       const client = getMercadoPagoClient();
       const payment = new Payment(client);
