@@ -37,9 +37,9 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
   const [messages, setMessages] = useState<Array<{ sender: 'chefinho' | 'user'; text: string }>>([
     {
       sender: 'chefinho',
-      text: preferredName 
-        ? `Olá, ${preferredName}! Eu sou o Chefinho, seu assistente de IA especialista em Fichas Técnicas, Fator de Correção e Margem de Lucro. Como posso ajudar sua cozinha hoje?`
-        : 'Olá! Eu sou o Chefinho, seu assistente de IA especialista em Fichas Técnicas, Fator de Correção e Margem de Lucro para Restaurantes e Pizzarias. Como posso ajudar sua cozinha hoje?'
+      text: preferredName
+        ? `Olá, ${preferredName}! Sou o Chefinho, seu assistente de fichas técnicas e margem de lucro. Como posso ajudar hoje?`
+        : 'Olá! Sou o Chefinho, seu assistente de fichas técnicas e margem de lucro. Como posso ajudar hoje?'
     }
   ]);
   const [inputText, setInputText] = useState('');
@@ -135,58 +135,58 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
 
     // Comprehensive report request across all system data
     if (lower.includes('relatório') || lower.includes('resumo') || lower.includes('todos') || lower.includes('sistema') || lower.includes('geral') || lower.includes('informações')) {
-      return `📊 Eu preparei um relatório completo de todas as informações presentes no sistema para você, ${displayName}!\n\n📋 Fichas Técnicas e Cardápio:\n• Total de pratos cadastrados: ${sheets.length}\n• Custo Médio da Mercadoria (CMV): ${avgCMV} por cento\n• Margem de Lucro Média: ${avgMargin} por cento\n• Pratos com margem saudável (vinte por cento ou mais): ${saudaveis}\n• Pratos com margem apertada (entre dez e dezenove vírgula nove por cento): ${apertadas}\n• Pratos em risco ou prejuízo (abaixo de dez por cento): ${risco}\n\n🥬 Insumos e Ingredientes:\n• Total de insumos cadastrados no estoque: ${rawItems.length}\n\n🏠 Custos Fixos e Mão de Obra:\n• Despesas fixas mensais cadastradas: R$ ${totalFixedExpenses.toFixed(2).replace('.', ',')}\n• Colaboradores e equipe cadastrados: ${employees.length} (Custo total estimado com encargos: R$ ${totalEmployeesSalaries.toFixed(2).replace('.', ',')})\n\n📉 Custos Variáveis:\n• Itens ativos: ${activeVariables.map(v => `${v.name} (${v.percentage} por cento)`).join(', ') || 'Nenhum ativado'}\n\nEu posso te ajudar a alterar qualquer um desses dados agora mesmo. O que você quer ajustar ou consultar, ${displayName}?`;
+      return `📊 Resumo rápido, ${displayName}: ${sheets.length} fichas (CMV médio ${avgCMV}%, margem média ${avgMargin}%) — ${saudaveis} saudáveis, ${apertadas} apertadas, ${risco} em risco. ${rawItems.length} insumos no estoque. Custos fixos: R$ ${totalFixedExpenses.toFixed(2).replace('.', ',')} (${employees.length} colaborador(es)).\n\nQuer que eu detalhe algum desses pontos?`;
     }
 
     if (lower.includes('passos') || lower.includes('como usar') || lower.includes('começar') || lower.includes('jornada') || lower.includes('etapas') || lower.includes('funciona')) {
-      return `🚀 Olá, ${displayName}! Eu posso te ajudar a organizar todo o seu restaurante de forma bem tranquila. Vamos passo a passo juntos?\n\nEu organizei o sistema nestes passos:\n1️⃣ Aba 'Itens e Receitas' → Insumos: Eu te ajudo a cadastrar cada ingrediente com preço de compra e embalagem.\n2️⃣ Aba 'Itens e Receitas' → Fichas Técnicas: Eu calculo o custo exato do prato e o CMV.\n3️⃣ Aba 'Custos Fixos': Eu somo o aluguel, as contas e sua equipe.\n4️⃣ Aba 'Dashboard': Eu mostro a saúde financeira do seu cardápio em tempo real!\n\n💡 Por qual dessas telas você quer que eu te guie agora, ${displayName}?`;
+      return `🚀 ${displayName}, é rapidinho:\n1️⃣ Itens e Receitas → cadastre os insumos\n2️⃣ Fichas Técnicas → monte os pratos (eu calculo o CMV)\n3️⃣ Custos Fixos → some aluguel e equipe\n\nPor qual eu te guio agora?`;
     }
 
     if (lower.includes('insumo') || lower.includes('ingrediente') || lower.includes('estoque') || lower.includes('cadastrar item')) {
-      return `🥬 Deixa que eu te explico como cadastrar insumos passo a passo, ${displayName}!\n\n1. Primeiro, eu sugiro abrir a aba 'Itens e Receitas' no menu lateral.\n2. Escolha a sub-aba 'Insumos e Ingredientes'.\n3. Clique no botão 'Adicionar Insumo'.\n4. Eu deixo o campo focado para você digitar rapidinho o nome, unidade e preço!\n\nAtualmente temos ${rawItems.length} insumo(s) cadastrado(s) no seu estoque. Se precisar de ajuda com algum item, é só me chamar que eu faço junto com você!`;
+      return `🥬 Vá em 'Itens e Receitas' → 'Insumos e Ingredientes' → 'Adicionar Insumo'. Você já tem ${rawItems.length} cadastrado(s). Quer ajuda com algum item específico?`;
     }
 
     if (lower.includes('receita') || lower.includes('ficha') || lower.includes('montar prato') || lower.includes('nova ficha')) {
-      return `🍳 Eu consigo fazer Fichas Técnicas junto com você, ${displayName}! É bem simples:\n\n1. Vá na aba 'Itens e Receitas' → 'Fichas Técnicas'.\n2. Clique em 'Nova Ficha Técnica'.\n3. Coloque o nome do prato e o rendimento em porções.\n4. Adicione os insumos que você cadastrou e as quantidades.\n\nAtualmente você tem ${sheets.length} ficha(s) técnica(s) cadastrada(s). Eu calculo automaticamente o preço de venda, a margem de lucro e o CMV para você não ter nenhuma surpresa!`;
+      return `🍳 Vá em 'Itens e Receitas' → 'Fichas Técnicas' → 'Nova Ficha Técnica', informe o rendimento e adicione os insumos. Você tem ${sheets.length} ficha(s) hoje — eu calculo CMV, preço e margem automaticamente.`;
     }
 
     if (lower.includes('custo fixo') || lower.includes('aluguel') || lower.includes('conta') || lower.includes('despesa')) {
-      return `🏠 Eu te ajudo a controlar os Custos Fixos, ${displayName}!\n\n1. Clique na aba 'Custos Fixos' no menu lateral.\n2. Na seção de Despesas Fixas, clique em 'Adicionar Custo Fixo'.\n3. Informe a despesa (como aluguel ou energia) e o valor mensal.\n\nO total das despesas fixas cadastradas é de R$ ${totalFixedExpenses.toFixed(2).replace('.', ',')}. Eu somo tudo automaticamente para ratear nos seus pratos!`;
+      return `🏠 Aba 'Custos Fixos' → 'Adicionar Custo Fixo', informe o valor mensal. Total cadastrado hoje: R$ ${totalFixedExpenses.toFixed(2).replace('.', ',')}. Quer adicionar uma despesa agora?`;
     }
 
     if (lower.includes('freelance') || lower.includes('colaborador') || lower.includes('equipe') || lower.includes('clt') || lower.includes('imposto') || lower.includes('salário')) {
-      return `👨‍🍳 Eu consigo cadastrar sua equipe e freelancers com você, ${displayName}!\n\n1. Na aba 'Custos Fixos', desça até 'Equipe e Colaboradores'.\n2. Clique em 'Adicionar Colaborador'.\n3. Se for um freela, eu criei a caixinha 'Freelance (Sem CLT)' para eu zerar os impostos e calcular só o valor real acordado!\n\nAtualmente você tem ${employees.length} colaborador(es) cadastrado(s). Posso te ajudar a cadastrar alguém agora?`;
+      return `👨‍🍳 Em 'Custos Fixos' → 'Equipe e Colaboradores' → 'Adicionar Colaborador'. Marque 'Freelance' pra zerar os encargos de CLT. Você tem ${employees.length} cadastrado(s) — quer adicionar alguém?`;
     }
 
     if (lower.includes('painel') || lower.includes('dashboard') || lower.includes('saúde') || lower.includes('analisar') || lower.includes('cmv') || lower.includes('cardápio')) {
-      return `📊 Eu fiz um diagnóstico completo do seu cardápio para você, ${displayName} (${sheets.length} Fichas Técnicas):\n\n🟢 Margem Saudável (vinte por cento ou mais): ${saudaveis} prato(s)\n🟡 Margem Apertada (entre dez e dezenove vírgula nove por cento): ${apertadas} prato(s)\n🔴 Em Risco ou Prejuízo (abaixo de dez por cento): ${risco} prato(s)\n\n📈 CMV Médio Geral: ${avgCMV} por cento\n\n💡 Minha dica de amigo: Se o CMV passar de trinta e dois por cento, eu posso te ajudar a revisar as porções ou ajustar o preço de venda para garantir seu lucro!`;
+      return `📊 Seu cardápio (${sheets.length} fichas): 🟢 ${saudaveis} saudáveis, 🟡 ${apertadas} apertadas, 🔴 ${risco} em risco. CMV médio: ${avgCMV}%. Se passar de 32%, vale revisar porção ou preço.`;
     }
 
     if (lower.includes('fator de correção') || lower.includes('fc') || lower.includes('desperdício') || lower.includes('apara')) {
-      return `⚖️ Deixa que eu te explico o Fator de Correção bem devagar, ${displayName}!\n\nÉ a parte do ingrediente que a gente limpa ou descasca antes de cozinhar (tipo a casca da batata ou o osso da carne).\n\nEu uso a fórmula: Peso Bruto dividido por Peso Líquido.\nSe você compra 1kg e sobra 800g limpo, o fator é 1,25. Assim, eu garanto que seu custo fica 100 por cento exato sem prejuízo invisível!`;
+      return `⚖️ Fator de Correção = Peso Bruto ÷ Peso Líquido (a parte que se perde limpando/descascando). Compra 1kg, sobra 800g limpo → fator 1,25. Garante o custo real sem prejuízo escondido.`;
     }
 
     if (lower.includes('cocção') || lower.includes('cozimento') || lower.includes('ic') || lower.includes('rendimento')) {
-      return `🍳 Eu te ajudo a entender o Índice de Cocção, ${displayName}!\n\nÉ a mudança de peso do alimento no fogo:\n• Carnes perdem água e reduzem.\n• Arroz e massas absorvem água e rendem muito mais.\n\nEu uso isso para padronizar o tamanho das porções servidas aos clientes!`;
+      return `🍳 Índice de Cocção é a mudança de peso no fogo: carnes reduzem, arroz e massa rendem mais absorvendo água. Uso isso pra padronizar o tamanho da porção servida.`;
     }
 
     if (lower.includes('impressão') || lower.includes('parede') || lower.includes('imprimir')) {
-      return `📋 Eu preparo a ficha para a parede da sua cozinha, ${displayName}!\n\nNa aba 'Itens e Receitas' > 'Fichas Técnicas', é só clicar no botão 'Imprimir' do prato desejado. Eu gero uma ficha limpa, vertical e em página única, pronta para você colar na estação da cozinha!`;
+      return `📋 Em 'Fichas Técnicas', clique em 'Imprimir' no prato desejado — gero uma ficha limpa, pronta pra colar na cozinha.`;
     }
 
     if (lower.includes('duplic') || lower.includes('descart') || lower.includes('embalag') || lower.includes('repeti') || lower.includes('lancament') || lower.includes('duplicação')) {
-      return `⚠️ Deixa que eu te explico sobre duplicações para proteger seu lucro, ${displayName}!\n\nEu vejo que muita gente tem essa dúvida com descartáveis (como marmitex e sacolas):\n\n❌ O Erro que eu quero te ajudar a evitar: Lançar o pacote total de descartáveis nos Custos Variáveis E TAMBÉM colocar cada caixinha separada dentro de cada Ficha Técnica. Fazendo isso, você acaba pagando duas vezes pelo mesmo insumo!\n\n✅ Como eu te aconselho a fazer:\n• Caminho A: Se você quer que a embalagem apareça no custo do prato, cadastre o descartável na Ficha Técnica (e não lance o pacote global nos custos variáveis).\n• Caminho B: Se prefere lançar o consumo mensal global nos Custos Variáveis, não coloque as caixinhas individuais nas fichas.\n\nEu consigo fazer junto com você na tela para ajustar do jeito certinho! Qual dos dois caminhos você prefere adotar, ${displayName}?`;
+      return `⚠️ Cuidado pra não pagar duas vezes pelo descartável: ou lança o pacote nos Custos Variáveis, ou coloca a caixinha em cada Ficha Técnica — nunca os dois juntos. Qual caminho você prefere?`;
     }
 
     if (lower.includes('simular') || lower.includes('simulador') || lower.includes('e se') || lower.includes('cenário') || lower.includes('inflação') || lower.includes('aumento')) {
-      return `⚡ Eu criei uma ferramenta incrível para você, ${displayName}: o **Simulador de Cenários & Preços 2.0**!\n\nCom ele, você pode testar 3 tipos de cenários sem arriscar seu lucro:\n1️⃣ **Reajuste Geral**: Simule +5%, +10% ou descontos em todo o cardápio ou em categorias específicas.\n2️⃣ **Alta de Insumo Específico**: Descubra o que acontece se o queijo, a carne ou o óleo subirem e veja todos os pratos afetados e o preço ideal sugerido.\n3️⃣ **Oscilação de Faturamento & Custos Fixos**: Simule contratação de equipe, aumento de aluguel ou queda de vendas para ver o novo rateio.\n\nVocê pode acessar a qualquer momento no menu lateral em **Custos & Precificação > Simulador de Cenários ⚡**!`;
+      return `⚡ Usa o Simulador de Cenários (menu lateral, Custos & Precificação): reajuste geral, alta de um insumo específico, ou mudança em custos fixos — sem mexer no cardápio real. Quer que eu te leve pra lá?`;
     }
 
     if (lower.includes('preço') || lower.includes('margem') || lower.includes('lucro') || lower.includes('markup')) {
-      return `💰 Eu calculo sua margem e preço na hora, ${displayName}!\n\nVocê digita o preço praticado e eu mostro instantaneamente a Margem Líquida em porcentagem e o CMV. Assim eu te ajudo a garantir que cada prato dê lucro de verdade!`;
+      return `💰 Digita o preço praticado na ficha que eu mostro na hora a Margem Líquida e o CMV, pra garantir que o prato dá lucro de verdade.`;
     }
 
-    return `👨‍🍳 Olá, ${displayName}! Eu sou o seu amigo e assistente mestre no Margem de Chefe.\n\nEu conheço cada tela e botão do sistema de cor! Eu posso te ajudar a:\n• Gerar relatórios e informações de todas as informações presentes no sistema\n• Cadastrar Itens e criar Fichas Técnicas\n• Simular reajustes de preços e cenários de inflação de insumos\n• Configurar Custos Fixos e Mão de Obra (CLT e Freelance)\n• Entender o Fator de Correção sem complicação\n• Analisar a Margem de Lucro e CMV\n\nVamos passo a passo? Como eu posso te ajudar agora, ${displayName}? 🚀`;
+    return `👨‍🍳 Olá, ${displayName}! Posso te ajudar com fichas técnicas, insumos, custos fixos, CMV, fator de correção ou o simulador de preços. Por onde começamos?`;
   };
 
   const handleSendMessage = async (textToSend?: string) => {

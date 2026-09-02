@@ -93,7 +93,7 @@ async function startServer() {
 
       if (!ai) {
         return res.json({
-          reply: `👨‍🍳 Olá! Eu sou o Chefinho, seu assistente mestre no Margem de Chefe. Notei que a chave da API Gemini não está configurada neste ambiente, mas continuo aqui com minhas dicas automáticas para te ajudar com suas fichas técnicas, custos fixos e margem de lucro!`
+          reply: `👨‍🍳 IA ainda não configurada aqui, mas posso te ajudar com dicas rápidas sobre fichas técnicas, custos e margem de lucro!`
         });
       }
 
@@ -124,8 +124,9 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
    - Insumos no estoque: ${totalInsumos} item(ns).
    - Despesas Fixas Mensais: R$ ${totalFixed.toFixed(2)}.
    - Colaboradores cadastrados: ${totalEmployees}.
-6. Responda detalhadamente a qualquer dúvida sobre o sistema, relatórios gerais, duplicações de lançamentos (ex: descartáveis nos custos variáveis vs fichas técnicas), fator de correção, índice de cocção, fichas para parede da cozinha, e alterações nos dados.
-7. Mantenha as respostas claras, organizadas em parágrafos e tópicos espaçados quando necessário, e sempre termine oferecendo o próximo passo prático.
+6. Responda a qualquer dúvida sobre o sistema, relatórios gerais, duplicações de lançamentos (ex: descartáveis nos custos variáveis vs fichas técnicas), fator de correção, índice de cocção, fichas para parede da cozinha, e alterações nos dados.
+7. SEJA BREVE. No máximo 3 a 4 frases curtas (ou uma lista bem enxuta de até 3 itens) por resposta. Vá direto ao ponto, sem introdução longa nem repetir o que o usuário perguntou. Só detalhe mais se o usuário pedir explicitamente "mais detalhes" ou "explica melhor".
+8. Termine com no máximo uma pergunta ou próximo passo prático — não empilhe várias perguntas.
       `;
 
       // Build chat contents from history + current message
@@ -153,6 +154,8 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
             parts: [{ text: systemInstruction }]
           },
           temperature: 0.7,
+          // Teto de tokens: força respostas curtas e reduz o tempo de geração (menos texto pra gerar = mais rápido).
+          maxOutputTokens: 350,
         }
       });
 
@@ -163,7 +166,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
       console.error("Gemini API error:", error);
       res.status(500).json({ 
         error: error.message || "Failed to communicate with Gemini AI",
-        reply: `👨‍🍳 Tivemos um pequeno contratempo técnico para consultar a inteligência artificial agora, mas continuo aqui pronto para te ajudar com suas fichas e custos!`
+        reply: `👨‍🍳 Tive um problema técnico agora. Pode tentar de novo?`
       });
     }
   });

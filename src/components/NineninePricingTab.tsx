@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TechnicalSheet } from '../types';
 import { ShoppingCart, Store, Car, Percent, DollarSign, Search, Sparkles, AlertCircle, Info, Calculator, Tag, Flame, Printer } from 'lucide-react';
+import { NineNineLogo } from './NineNineLogo';
 
 interface NineninePricingTabProps {
   sheets: TechnicalSheet[];
@@ -103,30 +104,30 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
   return (
     <div className="space-y-6 pb-12">
       
-      {/* HEADER BANNER */}
-      <div className="bg-gradient-to-r from-amber-500 via-yellow-600 to-orange-600 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+      {/* HEADER BANNER — amarelo, seguindo a identidade do 99Food (texto escuro p/ contraste) */}
+      <div className="bg-gradient-to-r from-[#FFCC00] via-yellow-400 to-yellow-500 rounded-3xl p-6 sm:p-8 text-slate-900 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-              <Car size={14} className="text-yellow-200" />
-              <span>Módulo 99Food Definitivo ⭐ NOVO</span>
+            <div className="inline-flex items-center space-x-2 bg-black/10 backdrop-blur-md px-3 py-1.5 rounded-full">
+              <NineNineLogo size={18} />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-800">Módulo Definitivo ⭐ NOVO</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black font-fredoka tracking-tight">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black font-fredoka tracking-tight text-slate-900">
               Precificação 99Food com Planos de Logística & Campanhas
             </h1>
-            <p className="text-amber-100 text-sm sm:text-base max-w-2xl font-medium">
+            <p className="text-slate-800 text-sm sm:text-base max-w-2xl font-medium">
               Simule planos de entrega (Própria vs Logística 99), taxas de comissão e campanhas promocionais para garantir margens sólidas no 99Food.
             </p>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex items-center space-x-4 shrink-0">
-            <div className="w-12 h-12 rounded-xl bg-white text-yellow-600 flex items-center justify-center font-bold shadow-md">
+          <div className="bg-black/10 backdrop-blur-md border border-black/10 p-4 rounded-2xl flex items-center space-x-4 shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-black text-[#FFCC00] flex items-center justify-center font-bold shadow-md">
               <Calculator size={24} />
             </div>
             <div>
-              <span className="text-xs text-amber-200 block font-medium">Pratos Analisados</span>
-              <span className="text-2xl font-black font-fredoka">{sheets.length} itens</span>
+              <span className="text-xs text-slate-700 block font-medium">Pratos Analisados</span>
+              <span className="text-2xl font-black font-fredoka text-slate-900">{sheets.length} itens</span>
             </div>
           </div>
         </div>

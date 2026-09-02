@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TechnicalSheet } from '../types';
 import { ShoppingCart, Store, Bike, Percent, DollarSign, Search, Sparkles, AlertCircle, Info, Calculator, Tag, Flame, Gift, CheckCircle2, Printer } from 'lucide-react';
+import { IfoodLogo } from './IfoodLogo';
 
 interface IfoodPricingTabProps {
   sheets: TechnicalSheet[];
@@ -108,29 +109,29 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
   return (
     <div className="space-y-6 pb-12">
       
-      {/* HEADER BANNER */}
-      <div className="bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+      {/* HEADER BANNER — vermelho, seguindo a identidade do iFood */}
+      <div className="bg-gradient-to-r from-[#EA1D2C] via-red-600 to-red-700 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-              <ShoppingCart size={14} className="text-amber-300" />
-              <span>Módulo iFood Definitivo ⭐ NOVO</span>
+            <div className="inline-flex items-center space-x-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-full">
+              <IfoodLogo size={18} light />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white/90">Módulo Definitivo ⭐ NOVO</span>
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black font-fredoka tracking-tight">
               Precificação iFood com Campanhas & Cumulatividade
             </h1>
-            <p className="text-orange-100 text-sm sm:text-base max-w-2xl font-medium">
+            <p className="text-red-100 text-sm sm:text-base max-w-2xl font-medium">
               Simule planos, taxas e regras de campanhas (HIT vs DI vs CI + Taxa Grátis) garantindo que sua margem de lucro permaneça blindada.
             </p>
           </div>
 
           <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex items-center space-x-4 shrink-0">
-            <div className="w-12 h-12 rounded-xl bg-white text-orange-600 flex items-center justify-center font-bold shadow-md">
+            <div className="w-12 h-12 rounded-xl bg-white text-[#EA1D2C] flex items-center justify-center font-bold shadow-md">
               <Calculator size={24} />
             </div>
             <div>
-              <span className="text-xs text-orange-200 block font-medium">Pratos Analisados</span>
+              <span className="text-xs text-red-200 block font-medium">Pratos Analisados</span>
               <span className="text-2xl font-black font-fredoka">{sheets.length} itens</span>
             </div>
           </div>
