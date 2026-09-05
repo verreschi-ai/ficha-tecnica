@@ -933,16 +933,27 @@ export function App() {
       console.error('Error saving user data:', e);
     }
 
-    // Envia (com debounce) o snapshot atual de fichas técnicas/insumos pro backend, que
-    // guarda em memória pra servir o painel de marketing (GRE Marketing) — ver
-    // POST /api/export/push em server.ts. O backend ignora silenciosamente qualquer e-mail
-    // diferente do configurado lá (EXPORT_OWNER_EMAIL), então isso não afeta outros usuários.
+    // Envia (com debounce) o snapshot atual de fichas técnicas/insumos/custos/colaboradores
+    // pro backend, que guarda em memória pra servir o painel de marketing (GRE Marketing) —
+    // ver POST /api/export/push em server.ts. O backend ignora silenciosamente qualquer
+    // e-mail diferente do configurado lá (EXPORT_OWNER_EMAIL), então isso não afeta outros
+    // usuários.
     if (exportPushTimerRef.current) clearTimeout(exportPushTimerRef.current);
     exportPushTimerRef.current = setTimeout(() => {
       fetch('/api/export/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, sheets, insumos: rawIngredients })
+        body: JSON.stringify({
+          email: cleanEmail,
+          sheets,
+          insumos: rawIngredients,
+          fixedCosts,
+          variableCosts,
+          appSettings: {
+            defaultTaxRate: appSettings.defaultTaxRate,
+            targetReturnMargin: appSettings.targetReturnMargin
+          }
+        })
       }).catch(() => {
         // Best-effort: se falhar, o próximo salvamento tenta de novo. Não afeta o uso do app.
       });
