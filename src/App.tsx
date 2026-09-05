@@ -864,6 +864,7 @@ export function App() {
   };
 
   const activeUserEmailRef = useRef<string | null>(currentUser?.email ? currentUser.email.trim().toLowerCase() : null);
+  const exportPushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // LOAD USER DATA ON CURRENT USER CHANGE (INDETERNIMATE PERMANENT STORAGE LINKED TO EMAIL)
   React.useEffect(() => {
@@ -931,6 +932,21 @@ export function App() {
     } catch (e) {
       console.error('Error saving user data:', e);
     }
+
+    // Envia (com debounce) o snapshot atual de fichas técnicas/insumos pro backend, que
+    // guarda em memória pra servir o painel de marketing (GRE Marketing) — ver
+    // POST /api/export/push em server.ts. O backend ignora silenciosamente qualquer e-mail
+    // diferente do configurado lá (EXPORT_OWNER_EMAIL), então isso não afeta outros usuários.
+    if (exportPushTimerRef.current) clearTimeout(exportPushTimerRef.current);
+    exportPushTimerRef.current = setTimeout(() => {
+      fetch('/api/export/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, sheets, insumos: rawIngredients })
+      }).catch(() => {
+        // Best-effort: se falhar, o próximo salvamento tenta de novo. Não afeta o uso do app.
+      });
+    }, 2000);
   }, [sheets, rawIngredients, fixedCosts, variableCosts, appSettings, categoriesList, suggestions, currentUser]);
 
   // Synchronized Settings and Fixed Costs Handlers (Indefinite Persistence & Global Propagation)

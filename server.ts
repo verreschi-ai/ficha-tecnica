@@ -3,9 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { MercadoPagoConfig, Payment, PreApproval } from "mercadopago";
-import { cert, getApps as getAdminApps, initializeApp as initializeAdminApp } from "firebase-admin/app";
-import { getFirestore as getAdminFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStoredSubscription, saveSubscriptionStatus } from "./subscriptionStore";
+import type { RawIngredientItem, TechnicalSheet } from "./src/types";
 
 // Rate limiter simples em memória, por IP — sem dependência nova. Existe para conter dois
 // abusos possíveis em rotas sem autenticação: varrer e-mails alheios em /mercadopago/status
@@ -73,26 +72,16 @@ async function startServer() {
     });
   };
 
-  // Firestore lido server-side (Admin SDK, com credenciais de serviço — bypassa as
-  // firestore.rules, que só liberam leitura pro dono do próprio documento) para o endpoint
-  // de exportação abaixo. Só inicializa se a credencial estiver configurada, já que essa
-  // exportação é opcional (usada pelo painel de marketing consumir os dados de custo/margem).
-  let adminDb: Firestore | null = null;
-  const getAdminDb = (): Firestore | null => {
-    if (adminDb) return adminDb;
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    if (!raw) return null;
-    try {
-      if (!getAdminApps().length) {
-        initializeAdminApp({ credential: cert(JSON.parse(raw)) });
-      }
-      adminDb = getAdminFirestore();
-      return adminDb;
-    } catch (err) {
-      console.error("Falha ao inicializar o Firebase Admin SDK:", err);
-      return null;
-    }
-  };
+  // Cache em memória do snapshot mais recente de fichas técnicas + insumos, alimentado pelo
+  // próprio front-end (POST /api/export/push, chamado sempre que o usuário salva algo) e servido
+  // pro painel de marketing (GET /api/export/summary). Não usa Firestore: os dados reais do app
+  // vivem só no localStorage do navegador do usuário (o código de sincronização com o Firestore
+  // em src/services/firebaseService.ts nunca chegou a ser ligado em lugar nenhum do app, e as
+  // variáveis VITE_FIREBASE_* nem estão configuradas no Render), então a única fonte confiável é
+  // o próprio front-end enviando o que tem em mãos. Some a cada reinício do servidor (Render free
+  // tier reinicia em cada deploy e após ociosidade) — se reconstrói sozinho na próxima vez que
+  // alguém abrir o app, o que é suficiente aqui já que só alimenta o resumo que a Ana comenta.
+  let exportCache: { sheets: TechnicalSheet[]; insumos: RawIngredientItem[]; updatedAt: string } | null = null;
 
   // Initialize Gemini AI client server-side
   const getGeminiClient = () => {
@@ -491,90 +480,91 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
     }
   });
 
-  // Exporta um resumo somente-leitura das fichas técnicas e insumos de UM único usuário
-  // (o dono configurado em EXPORT_OWNER_USER_ID) para o painel de marketing (GRE Marketing/
-  // Don Giovanni) consumir e a IA de lá comentar sobre CMV e margem. Protegido por um token
-  // compartilhado (não é login de usuário) — por isso nunca aceita um userId vindo da
-  // requisição, só o fixado no ambiente, pra não virar uma forma de ler dados de outro cliente
-  // do "Margem de Chefe" com o mesmo token.
-  app.get("/api/export/summary", rateLimit(30, 5 * 60 * 1000), async (req, res) => {
-    try {
-      const expectedToken = process.env.EXPORT_API_TOKEN;
-      if (!expectedToken) {
-        return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
-      }
-      const providedToken = String(req.header("x-export-token") || "").trim();
-      if (!providedToken || providedToken !== expectedToken) {
-        return res.status(401).json({ error: "Token de exportação inválido." });
-      }
+  // Recebe do próprio front-end (chamado sempre que sheets/insumos mudam, ver src/App.tsx) o
+  // snapshot atual de fichas técnicas + insumos do usuário logado, pra guardar em exportCache.
+  // Só aceita o e-mail configurado em EXPORT_OWNER_ID_EMAIL (o dono do painel de marketing) —
+  // outros usuários do "Margem de Chefe" que passarem por aqui são silenciosamente ignorados,
+  // pra nunca vazar ou sobrescrever o cache com dados de outro cliente.
+  app.post("/api/export/push", rateLimit(60, 5 * 60 * 1000), (req, res) => {
+    const ownerEmail = process.env.EXPORT_OWNER_EMAIL;
+    if (!ownerEmail) return res.status(204).send();
 
-      const ownerUserId = process.env.EXPORT_OWNER_USER_ID;
-      if (!ownerUserId) {
-        return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_OWNER_USER_ID)." });
-      }
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (email !== ownerEmail.trim().toLowerCase()) return res.status(204).send();
 
-      const db = getAdminDb();
-      if (!db) {
-        return res
-          .status(503)
-          .json({ error: "Exportação não configurada no servidor (FIREBASE_SERVICE_ACCOUNT_JSON)." });
-      }
-
-      const [receitasSnap, insumosSnap] = await Promise.all([
-        db.collection("receitas").where("userId", "==", ownerUserId).get(),
-        db.collection("insumos").where("userId", "==", ownerUserId).get(),
-      ]);
-
-      const sheets = receitasSnap.docs.map((docSnap) => {
-        const r = docSnap.data() as Record<string, any>;
-        return {
-          id: String(r.id ?? docSnap.id),
-          code: String(r.code ?? ""),
-          name: String(r.name ?? ""),
-          category: String(r.category ?? ""),
-          isActive: r.isActive !== false,
-          sellingPrice: Number(r.sellingPrice) || 0,
-          costPerPortion: Number(r.costPerPortion) || 0,
-          totalRecipeCost: Number(r.totalRecipeCost) || 0,
-          cmv: Number(r.cmv) || 0,
-          margin: Number(r.margin) || 0,
-          status: String(r.status ?? "ideal"),
-        };
-      });
-
-      const insumos = insumosSnap.docs.map((docSnap) => {
-        const i = docSnap.data() as Record<string, any>;
-        return {
-          id: String(i.id ?? docSnap.id),
-          name: String(i.name ?? ""),
-          unit: String(i.unit ?? ""),
-          unitPrice: Number(i.unitPrice) || 0,
-          category: String(i.category ?? ""),
-          supplier: String(i.supplier ?? ""),
-        };
-      });
-
-      const activeSheets = sheets.filter((s) => s.isActive);
-      const avgCmv = activeSheets.length
-        ? activeSheets.reduce((acc, s) => acc + s.cmv, 0) / activeSheets.length
-        : 0;
-      const avgMargin = activeSheets.length
-        ? activeSheets.reduce((acc, s) => acc + s.margin, 0) / activeSheets.length
-        : 0;
-
-      res.json({
-        generatedAt: new Date().toISOString(),
-        totalSheets: sheets.length,
-        avgCmv,
-        avgMargin,
-        sheets,
-        totalInsumos: insumos.length,
-        insumos,
-      });
-    } catch (error: any) {
-      console.error("Erro ao exportar resumo de fichas técnicas:", error);
-      res.status(500).json({ error: error.message || "Falha ao exportar dados." });
+    const sheets = Array.isArray(req.body?.sheets) ? req.body.sheets : [];
+    const insumos = Array.isArray(req.body?.insumos) ? req.body.insumos : [];
+    // Um cardápio real não chega perto disso — só um teto pra não deixar a memória do
+    // processo crescer sem limite com um payload malformado ou malicioso.
+    if (sheets.length > 1000 || insumos.length > 5000) {
+      return res.status(413).json({ error: "Quantidade de itens acima do esperado." });
     }
+
+    exportCache = { sheets, insumos, updatedAt: new Date().toISOString() };
+    res.status(204).send();
+  });
+
+  // Exporta um resumo somente-leitura das fichas técnicas e insumos (o último snapshot
+  // recebido via POST /api/export/push) para o painel de marketing (GRE Marketing/Don
+  // Giovanni) consumir e a IA de lá comentar sobre CMV e margem. Protegido por um token
+  // compartilhado — só quem tiver o mesmo EXPORT_API_TOKEN configurado lá consegue ler.
+  app.get("/api/export/summary", rateLimit(30, 5 * 60 * 1000), (req, res) => {
+    const expectedToken = process.env.EXPORT_API_TOKEN;
+    if (!expectedToken) {
+      return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
+    }
+    const providedToken = String(req.header("x-export-token") || "").trim();
+    if (!providedToken || providedToken !== expectedToken) {
+      return res.status(401).json({ error: "Token de exportação inválido." });
+    }
+
+    if (!exportCache) {
+      return res.status(503).json({
+        error:
+          "Ainda não chegou nenhum dado sincronizado. Abra o app da Ficha Técnica e navegue por ele uma vez pra iniciar a sincronização.",
+      });
+    }
+
+    const sheets = exportCache.sheets.map((r) => ({
+      id: String(r.id),
+      code: String(r.code ?? ""),
+      name: String(r.name ?? ""),
+      category: String(r.category ?? ""),
+      isActive: r.isActive !== false,
+      sellingPrice: Number(r.sellingPrice) || 0,
+      costPerPortion: Number(r.costPerPortion) || 0,
+      totalRecipeCost: Number(r.totalRecipeCost) || 0,
+      cmv: Number(r.cmv) || 0,
+      margin: Number(r.margin) || 0,
+      status: String(r.status ?? "ideal"),
+    }));
+
+    const insumos = exportCache.insumos.map((i) => ({
+      id: String(i.id),
+      name: String(i.name ?? ""),
+      unit: String(i.unit ?? ""),
+      unitPrice: Number(i.unitPrice) || 0,
+      category: String(i.category ?? ""),
+      supplier: String(i.supplier ?? ""),
+    }));
+
+    const activeSheets = sheets.filter((s) => s.isActive);
+    const avgCmv = activeSheets.length
+      ? activeSheets.reduce((acc, s) => acc + s.cmv, 0) / activeSheets.length
+      : 0;
+    const avgMargin = activeSheets.length
+      ? activeSheets.reduce((acc, s) => acc + s.margin, 0) / activeSheets.length
+      : 0;
+
+    res.json({
+      generatedAt: exportCache.updatedAt,
+      totalSheets: sheets.length,
+      avgCmv,
+      avgMargin,
+      sheets,
+      totalInsumos: insumos.length,
+      insumos,
+    });
   });
 
   // Health check
