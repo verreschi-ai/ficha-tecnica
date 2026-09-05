@@ -3,6 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { MercadoPagoConfig, Payment, PreApproval } from "mercadopago";
+import { cert, getApps as getAdminApps, initializeApp as initializeAdminApp } from "firebase-admin/app";
+import { getFirestore as getAdminFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStoredSubscription, saveSubscriptionStatus } from "./subscriptionStore";
 
 // Rate limiter simples em memória, por IP — sem dependência nova. Existe para conter dois
@@ -69,6 +71,27 @@ async function startServer() {
     return new MercadoPagoConfig({
       accessToken
     });
+  };
+
+  // Firestore lido server-side (Admin SDK, com credenciais de serviço — bypassa as
+  // firestore.rules, que só liberam leitura pro dono do próprio documento) para o endpoint
+  // de exportação abaixo. Só inicializa se a credencial estiver configurada, já que essa
+  // exportação é opcional (usada pelo painel de marketing consumir os dados de custo/margem).
+  let adminDb: Firestore | null = null;
+  const getAdminDb = (): Firestore | null => {
+    if (adminDb) return adminDb;
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (!raw) return null;
+    try {
+      if (!getAdminApps().length) {
+        initializeAdminApp({ credential: cert(JSON.parse(raw)) });
+      }
+      adminDb = getAdminFirestore();
+      return adminDb;
+    } catch (err) {
+      console.error("Falha ao inicializar o Firebase Admin SDK:", err);
+      return null;
+    }
   };
 
   // Initialize Gemini AI client server-side
@@ -465,6 +488,92 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
         success: false,
         error: error.message || "Falha ao processar assinatura mensal no Mercado Pago." 
       });
+    }
+  });
+
+  // Exporta um resumo somente-leitura das fichas técnicas e insumos de UM único usuário
+  // (o dono configurado em EXPORT_OWNER_USER_ID) para o painel de marketing (GRE Marketing/
+  // Don Giovanni) consumir e a IA de lá comentar sobre CMV e margem. Protegido por um token
+  // compartilhado (não é login de usuário) — por isso nunca aceita um userId vindo da
+  // requisição, só o fixado no ambiente, pra não virar uma forma de ler dados de outro cliente
+  // do "Margem de Chefe" com o mesmo token.
+  app.get("/api/export/summary", rateLimit(30, 5 * 60 * 1000), async (req, res) => {
+    try {
+      const expectedToken = process.env.EXPORT_API_TOKEN;
+      if (!expectedToken) {
+        return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
+      }
+      const providedToken = String(req.header("x-export-token") || "").trim();
+      if (!providedToken || providedToken !== expectedToken) {
+        return res.status(401).json({ error: "Token de exportação inválido." });
+      }
+
+      const ownerUserId = process.env.EXPORT_OWNER_USER_ID;
+      if (!ownerUserId) {
+        return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_OWNER_USER_ID)." });
+      }
+
+      const db = getAdminDb();
+      if (!db) {
+        return res
+          .status(503)
+          .json({ error: "Exportação não configurada no servidor (FIREBASE_SERVICE_ACCOUNT_JSON)." });
+      }
+
+      const [receitasSnap, insumosSnap] = await Promise.all([
+        db.collection("receitas").where("userId", "==", ownerUserId).get(),
+        db.collection("insumos").where("userId", "==", ownerUserId).get(),
+      ]);
+
+      const sheets = receitasSnap.docs.map((docSnap) => {
+        const r = docSnap.data() as Record<string, any>;
+        return {
+          id: String(r.id ?? docSnap.id),
+          code: String(r.code ?? ""),
+          name: String(r.name ?? ""),
+          category: String(r.category ?? ""),
+          isActive: r.isActive !== false,
+          sellingPrice: Number(r.sellingPrice) || 0,
+          costPerPortion: Number(r.costPerPortion) || 0,
+          totalRecipeCost: Number(r.totalRecipeCost) || 0,
+          cmv: Number(r.cmv) || 0,
+          margin: Number(r.margin) || 0,
+          status: String(r.status ?? "ideal"),
+        };
+      });
+
+      const insumos = insumosSnap.docs.map((docSnap) => {
+        const i = docSnap.data() as Record<string, any>;
+        return {
+          id: String(i.id ?? docSnap.id),
+          name: String(i.name ?? ""),
+          unit: String(i.unit ?? ""),
+          unitPrice: Number(i.unitPrice) || 0,
+          category: String(i.category ?? ""),
+          supplier: String(i.supplier ?? ""),
+        };
+      });
+
+      const activeSheets = sheets.filter((s) => s.isActive);
+      const avgCmv = activeSheets.length
+        ? activeSheets.reduce((acc, s) => acc + s.cmv, 0) / activeSheets.length
+        : 0;
+      const avgMargin = activeSheets.length
+        ? activeSheets.reduce((acc, s) => acc + s.margin, 0) / activeSheets.length
+        : 0;
+
+      res.json({
+        generatedAt: new Date().toISOString(),
+        totalSheets: sheets.length,
+        avgCmv,
+        avgMargin,
+        sheets,
+        totalInsumos: insumos.length,
+        insumos,
+      });
+    } catch (error: any) {
+      console.error("Erro ao exportar resumo de fichas técnicas:", error);
+      res.status(500).json({ error: error.message || "Falha ao exportar dados." });
     }
   });
 
