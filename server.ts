@@ -508,7 +508,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // recebido via POST /api/export/push) para o painel de marketing (GRE Marketing/Don
   // Giovanni) consumir e a IA de lá comentar sobre CMV e margem. Protegido por um token
   // compartilhado — só quem tiver o mesmo EXPORT_API_TOKEN configurado lá consegue ler.
-  app.get("/api/export/summary", rateLimit(30, 5 * 60 * 1000), (req, res) => {
+  app.get("/api/export/summary", rateLimit(120, 5 * 60 * 1000), (req, res) => {
     const expectedToken = process.env.EXPORT_API_TOKEN;
     if (!expectedToken) {
       return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
