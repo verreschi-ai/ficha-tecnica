@@ -14,3 +14,7 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: EXPORT_API_TOKEN
+        sync: false
+      - key: EXPORT_OWNER_EMAIL
+        sync: false

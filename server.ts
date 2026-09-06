@@ -4,6 +4,14 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { MercadoPagoConfig, Payment, PreApproval } from "mercadopago";
 import { getStoredSubscription, saveSubscriptionStatus } from "./subscriptionStore";
+import type {
+  AppSettings,
+  Employee,
+  FixedCostsData,
+  RawIngredientItem,
+  TechnicalSheet,
+  VariableCostsData,
+} from "./src/types";
 
 // Rate limiter simples em memória, por IP — sem dependência nova. Existe para conter dois
 // abusos possíveis em rotas sem autenticação: varrer e-mails alheios em /mercadopago/status
@@ -70,6 +78,24 @@ async function startServer() {
       accessToken
     });
   };
+
+  // Cache em memória do snapshot mais recente de fichas técnicas + insumos, alimentado pelo
+  // próprio front-end (POST /api/export/push, chamado sempre que o usuário salva algo) e servido
+  // pro painel de marketing (GET /api/export/summary). Não usa Firestore: os dados reais do app
+  // vivem só no localStorage do navegador do usuário (o código de sincronização com o Firestore
+  // em src/services/firebaseService.ts nunca chegou a ser ligado em lugar nenhum do app, e as
+  // variáveis VITE_FIREBASE_* nem estão configuradas no Render), então a única fonte confiável é
+  // o próprio front-end enviando o que tem em mãos. Some a cada reinício do servidor (Render free
+  // tier reinicia em cada deploy e após ociosidade) — se reconstrói sozinho na próxima vez que
+  // alguém abrir o app, o que é suficiente aqui já que só alimenta o resumo que a Ana comenta.
+  let exportCache: {
+    sheets: TechnicalSheet[];
+    insumos: RawIngredientItem[];
+    fixedCosts: FixedCostsData;
+    variableCosts: VariableCostsData;
+    appSettings: Pick<AppSettings, "defaultTaxRate" | "targetReturnMargin">;
+    updatedAt: string;
+  } | null = null;
 
   // Initialize Gemini AI client server-side
   const getGeminiClient = () => {
@@ -466,6 +492,238 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
         error: error.message || "Falha ao processar assinatura mensal no Mercado Pago." 
       });
     }
+  });
+
+  // Réplica exata do cálculo de custo mensal de UM colaborador feito em src/App.tsx
+  // (calculateEmployeeTotal) — precisa ficar em sincronia se aquela função mudar, já que o
+  // relatório de precificação exportado abaixo depende do mesmo total de folha de pagamento.
+  const calculateEmployeeMonthlyCost = (emp: Employee): number => {
+    if (emp.isFreelance) {
+      return (Number(emp.baseSalary) || 0) + (Number(emp.otherBenefits) || 0);
+    }
+    const inc13 = emp.includeThirteenth !== false;
+    const incVac = emp.includeVacation !== false;
+    const incTrans = emp.includeTransport !== false;
+    const incMeal = emp.includeMeal !== false;
+    return (
+      (Number(emp.baseSalary) || 0) +
+      (Number(emp.fgts) || 0) +
+      (inc13 ? Number(emp.thirteenthSalary) || 0 : 0) +
+      (incVac ? Number(emp.vacationOneThird) || 0 : 0) +
+      (Number(emp.inssPatronal) || 0) +
+      (incTrans ? Number(emp.valeTransporte) || 0 : 0) +
+      (incMeal ? Number(emp.valeRefeicao) || 0 : 0) +
+      (Number(emp.otherBenefits) || 0)
+    );
+  };
+
+  // Recebe do próprio front-end (chamado sempre que sheets/insumos/custos mudam, ver
+  // src/App.tsx) o snapshot atual de fichas técnicas, insumos, custos fixos/variáveis e
+  // colaboradores do usuário logado, pra guardar em exportCache. Só aceita o e-mail
+  // configurado em EXPORT_OWNER_EMAIL (o dono do painel de marketing) — outros usuários do
+  // "Margem de Chefe" que passarem por aqui são silenciosamente ignorados, pra nunca vazar
+  // ou sobrescrever o cache com dados de outro cliente.
+  app.post("/api/export/push", rateLimit(60, 5 * 60 * 1000), (req, res) => {
+    const ownerEmail = process.env.EXPORT_OWNER_EMAIL;
+    if (!ownerEmail) return res.status(204).send();
+
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (email !== ownerEmail.trim().toLowerCase()) return res.status(204).send();
+
+    const sheets = Array.isArray(req.body?.sheets) ? req.body.sheets : [];
+    const insumos = Array.isArray(req.body?.insumos) ? req.body.insumos : [];
+    const fixedExpenses = Array.isArray(req.body?.fixedCosts?.fixedExpenses)
+      ? req.body.fixedCosts.fixedExpenses
+      : [];
+    const employees = Array.isArray(req.body?.fixedCosts?.employees) ? req.body.fixedCosts.employees : [];
+    const variableItems = Array.isArray(req.body?.variableCosts?.items) ? req.body.variableCosts.items : [];
+    // Um cardápio/folha de pagamento real não chega perto disso — só um teto pra não deixar
+    // a memória do processo crescer sem limite com um payload malformado ou malicioso.
+    if (
+      sheets.length > 1000 ||
+      insumos.length > 5000 ||
+      fixedExpenses.length > 200 ||
+      employees.length > 200 ||
+      variableItems.length > 200
+    ) {
+      return res.status(413).json({ error: "Quantidade de itens acima do esperado." });
+    }
+
+    exportCache = {
+      sheets,
+      insumos,
+      fixedCosts: {
+        monthlyRevenue: Number(req.body?.fixedCosts?.monthlyRevenue) || 0,
+        fixedExpenses,
+        employees,
+      },
+      variableCosts: { items: variableItems },
+      appSettings: {
+        defaultTaxRate: Number(req.body?.appSettings?.defaultTaxRate) || 6,
+        targetReturnMargin: Number(req.body?.appSettings?.targetReturnMargin) || 20,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    res.status(204).send();
+  });
+
+  // Exporta um resumo somente-leitura das fichas técnicas, insumos, custos fixos/variáveis,
+  // colaboradores e relatório de precificação (o último snapshot recebido via POST
+  // /api/export/push) para o painel de marketing (GRE Marketing/Don Giovanni) consumir e a
+  // IA de lá comentar. Protegido por um token compartilhado — só quem tiver o mesmo
+  // EXPORT_API_TOKEN configurado lá consegue ler.
+  //
+  // Sem rate limit aqui de propósito (já teve 30, depois 120 req/5min, e mesmo assim seguiu
+  // dando 429 em uso normal): esse endpoint não é público como os de Mercado Pago acima — só
+  // o próprio painel de marketing tem o token pra chamá-lo — então o limite só atrapalhava
+  // sem conter abuso nenhum de verdade. O cache de 2 minutos do lado do painel de marketing
+  // já evita qualquer chamada excessiva.
+  app.get("/api/export/summary", (req, res) => {
+    const expectedToken = process.env.EXPORT_API_TOKEN;
+    if (!expectedToken) {
+      return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
+    }
+    const providedToken = String(req.header("x-export-token") || "").trim();
+    if (!providedToken || providedToken !== expectedToken) {
+      return res.status(401).json({ error: "Token de exportação inválido." });
+    }
+
+    if (!exportCache) {
+      return res.status(503).json({
+        error:
+          "Ainda não chegou nenhum dado sincronizado. Abra o app da Ficha Técnica e navegue por ele uma vez pra iniciar a sincronização.",
+      });
+    }
+
+    const sheets = exportCache.sheets.map((r) => ({
+      id: String(r.id),
+      code: String(r.code ?? ""),
+      name: String(r.name ?? ""),
+      category: String(r.category ?? ""),
+      isActive: r.isActive !== false,
+      sellingPrice: Number(r.sellingPrice) || 0,
+      costPerPortion: Number(r.costPerPortion) || 0,
+      totalRecipeCost: Number(r.totalRecipeCost) || 0,
+      cmv: Number(r.cmv) || 0,
+      margin: Number(r.margin) || 0,
+      status: String(r.status ?? "ideal"),
+    }));
+
+    const insumos = exportCache.insumos.map((i) => ({
+      id: String(i.id),
+      name: String(i.name ?? ""),
+      unit: String(i.unit ?? ""),
+      unitPrice: Number(i.unitPrice) || 0,
+      category: String(i.category ?? ""),
+      supplier: String(i.supplier ?? ""),
+    }));
+
+    const activeSheets = sheets.filter((s) => s.isActive);
+    const avgCmv = activeSheets.length
+      ? activeSheets.reduce((acc, s) => acc + s.cmv, 0) / activeSheets.length
+      : 0;
+    const avgMargin = activeSheets.length
+      ? activeSheets.reduce((acc, s) => acc + s.margin, 0) / activeSheets.length
+      : 0;
+
+    // --- Colaboradores & custos fixos ---
+    const employees = exportCache.fixedCosts.employees.map((emp) => ({
+      id: String(emp.id),
+      name: String(emp.name ?? ""),
+      role: String(emp.role ?? ""),
+      isFreelance: !!emp.isFreelance,
+      baseSalary: Number(emp.baseSalary) || 0,
+      monthlyCost: Number(calculateEmployeeMonthlyCost(emp).toFixed(2)),
+    }));
+    const totalPayroll = employees.reduce((acc, e) => acc + e.monthlyCost, 0);
+
+    const fixedExpenses = exportCache.fixedCosts.fixedExpenses.map((f) => ({
+      id: String(f.id),
+      name: String(f.name ?? ""),
+      amount: Number(f.amount) || 0,
+    }));
+    const totalFixedExpenses = fixedExpenses.reduce((acc, f) => acc + f.amount, 0);
+    const totalFixedCost = totalFixedExpenses + totalPayroll;
+    const monthlyRevenue = exportCache.fixedCosts.monthlyRevenue || 1;
+    const fixedCostPct = Number(((totalFixedCost / monthlyRevenue) * 100).toFixed(1));
+
+    // --- Custos variáveis ---
+    const variableCostItems = exportCache.variableCosts.items.map((i) => ({
+      id: String(i.id),
+      name: String(i.name ?? ""),
+      percentage: Number(i.percentage) || 0,
+      enabled: !!i.enabled,
+    }));
+    const variableCostPct = Number(
+      variableCostItems
+        .filter((i) => i.enabled)
+        .reduce((acc, i) => acc + i.percentage, 0)
+        .toFixed(1)
+    );
+
+    // --- Relatório de precificação (mesma fórmula de src/components/PricingReportTab.tsx) ---
+    const taxRate = exportCache.appSettings.defaultTaxRate;
+    const targetMargin = exportCache.appSettings.targetReturnMargin;
+    const calculateSuggestedPrice = (costInsumo: number): number => {
+      const totalDeductionsPct = taxRate + variableCostPct + fixedCostPct + targetMargin;
+      if (totalDeductionsPct < 90) return costInsumo / (1 - totalDeductionsPct / 100);
+      return costInsumo * 3.5;
+    };
+    const dishes = sheets.map((s) => {
+      const costInsumo = s.costPerPortion;
+      const sellPrice = s.sellingPrice;
+      const suggestedPrice = calculateSuggestedPrice(costInsumo);
+      const activePrice = sellPrice > 0 ? sellPrice : suggestedPrice > 0 ? suggestedPrice : costInsumo > 0 ? costInsumo * 3.5 : 0;
+      const cmvPct =
+        sellPrice > 0 && s.cmv > 0
+          ? s.cmv
+          : activePrice > 0
+            ? Number(((costInsumo / activePrice) * 100).toFixed(1))
+            : costInsumo === 0
+              ? 0
+              : 100;
+      const profitPct = activePrice > 0 ? Number((100 - (cmvPct + fixedCostPct + variableCostPct + taxRate)).toFixed(1)) : 0;
+      let status: "healthy" | "warning" | "danger" = "healthy";
+      if (profitPct < 10) status = "danger";
+      else if (profitPct < targetMargin) status = "warning";
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        costInsumo,
+        sellPrice,
+        suggestedPrice: Number(suggestedPrice.toFixed(2)),
+        cmvPct,
+        profitPct,
+        status,
+      };
+    });
+
+    res.json({
+      generatedAt: exportCache.updatedAt,
+      totalSheets: sheets.length,
+      avgCmv,
+      avgMargin,
+      sheets,
+      totalInsumos: insumos.length,
+      insumos,
+      employees,
+      totalPayroll: Number(totalPayroll.toFixed(2)),
+      fixedExpenses,
+      monthlyRevenue,
+      totalFixedCost: Number(totalFixedCost.toFixed(2)),
+      fixedCostPct,
+      variableCostItems,
+      variableCostPct,
+      pricing: {
+        taxRate,
+        targetMargin,
+        healthyCount: dishes.filter((d) => d.status === "healthy").length,
+        warningCount: dishes.filter((d) => d.status === "warning").length,
+        dangerCount: dishes.filter((d) => d.status === "danger").length,
+        dishes,
+      },
+    });
   });
 
   // Health check
