@@ -572,7 +572,13 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // /api/export/push) para o painel de marketing (GRE Marketing/Don Giovanni) consumir e a
   // IA de lá comentar. Protegido por um token compartilhado — só quem tiver o mesmo
   // EXPORT_API_TOKEN configurado lá consegue ler.
-  app.get("/api/export/summary", rateLimit(120, 5 * 60 * 1000), (req, res) => {
+  //
+  // Sem rate limit aqui de propósito (já teve 30, depois 120 req/5min, e mesmo assim seguiu
+  // dando 429 em uso normal): esse endpoint não é público como os de Mercado Pago acima — só
+  // o próprio painel de marketing tem o token pra chamá-lo — então o limite só atrapalhava
+  // sem conter abuso nenhum de verdade. O cache de 2 minutos do lado do painel de marketing
+  // já evita qualquer chamada excessiva.
+  app.get("/api/export/summary", (req, res) => {
     const expectedToken = process.env.EXPORT_API_TOKEN;
     if (!expectedToken) {
       return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
