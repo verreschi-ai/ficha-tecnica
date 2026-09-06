@@ -613,6 +613,23 @@ export function App() {
     localStorage.setItem('basechef_app_settings', JSON.stringify(updatedSettings));
   };
 
+  // Zera fichas técnicas, insumos, custos fixos e variáveis da conta logada para começar do zero.
+  // Mantém o tema visual (preferência de interface, não é "dado do negócio") e a lista de categorias
+  // (só nomes de categoria, não informação cadastrada). O autosave existente já persiste a limpeza.
+  const handleResetAllData = () => {
+    setSheets([]);
+    setRawIngredients([]);
+    setFixedCosts({ monthlyRevenue: 0, fixedExpenses: [], employees: [] });
+    setVariableCosts({ items: [] });
+    setAppSettings((prev) => ({
+      ...prev,
+      defaultTaxRate: 6.0,
+      targetReturnMargin: 20.0,
+      monthlyRevenue: 0,
+      whatsappNumber: ''
+    }));
+  };
+
   // ADMIN STATUS DETERMINATION
   const isAdmin = currentUser?.email?.trim().toLowerCase() === 'miguel@gmail.com' || currentUser?.role === 'admin';
 
@@ -1351,6 +1368,7 @@ export function App() {
               onLogout={handleLogout}
               currentUser={currentUser}
               onNavigateToSubscription={() => setActiveTab('assinatura')}
+              onResetAllData={handleResetAllData}
             />
           )}
 

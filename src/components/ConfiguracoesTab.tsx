@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AppSettings, User } from '../types';
 import { MoneyInput } from './MoneyInput';
 import { DecimalInput } from './DecimalInput';
-import { Settings, Percent, DollarSign, TrendingUp, Save, CheckCircle2, Sun, Moon, Palette, LogOut, ShieldAlert, Sparkles, CreditCard, Clock, Lock, Key, X } from 'lucide-react';
+import { Settings, Percent, DollarSign, TrendingUp, Save, CheckCircle2, Sun, Moon, Palette, LogOut, ShieldAlert, Sparkles, CreditCard, Clock, Lock, Key, X, Trash2, AlertTriangle } from 'lucide-react';
 import { validatePassword, auth } from '../services/firebaseService';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 
@@ -12,6 +12,7 @@ interface ConfiguracoesTabProps {
   onLogout?: () => void;
   currentUser?: User | null;
   onNavigateToSubscription?: () => void;
+  onResetAllData?: () => void;
 }
 
 export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
@@ -19,13 +20,19 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
   onChangeSettings,
   onLogout,
   currentUser,
-  onNavigateToSubscription
+  onNavigateToSubscription,
+  onResetAllData
 }) => {
   const [formData, setFormData] = React.useState<AppSettings>({ ...settings, theme: settings.theme || 'light' });
   const [saved, setSaved] = React.useState(false);
   const [showCancelModal, setShowCancelModal] = React.useState(false);
   const [cancelReasons, setCancelReasons] = React.useState<string[]>([]);
   const [cancelComment, setCancelComment] = React.useState('');
+
+  // Zerar dados (zona de perigo)
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmChecked, setResetConfirmChecked] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
 
   // Password change states
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -336,6 +343,33 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
         </div>
       </div>
 
+      {/* ZONA DE PERIGO: ZERAR TODOS OS DADOS CADASTRADOS */}
+      {onResetAllData && (
+        <div className="bg-white p-6 rounded-3xl border border-red-200 shadow-xs space-y-4">
+          <div className="flex items-center space-x-2 text-red-700 font-bold text-base border-b border-red-100 pb-3">
+            <AlertTriangle size={20} />
+            <h3 className="uppercase tracking-wider">Zona de Perigo</h3>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-red-50/50 p-5 rounded-2xl border border-red-100">
+            <div className="space-y-1">
+              <h4 className="font-bold text-xs text-red-900 uppercase tracking-wider">Zerar Todos os Dados Cadastrados</h4>
+              <p className="text-[11px] text-red-700 max-w-lg">
+                Apaga permanentemente todas as fichas técnicas, insumos, custos fixos e custos variáveis desta conta, deixando o sistema limpo para você começar a cadastrar suas informações reais. Essa ação não pode ser desfeita.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setShowResetModal(true); setResetConfirmChecked(false); setResetDone(false); }}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl flex items-center space-x-2 transition-all cursor-pointer shadow-md active:scale-95 shrink-0"
+            >
+              <Trash2 size={16} />
+              <span>Zerar Dados</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* CARD ASSINATURA E GERENCIAMENTO */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex items-center space-x-2 text-amber-600 font-bold text-base border-b border-slate-100 pb-3">
@@ -471,6 +505,77 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
                 Confirmar Cancelamento
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESET ALL DATA CONFIRMATION MODAL */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden p-6 sm:p-8 space-y-6">
+            {resetDone ? (
+              <div className="text-center space-y-3 py-4">
+                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center font-bold">
+                  <CheckCircle2 size={28} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900">Tudo limpo!</h3>
+                <p className="text-xs text-slate-600">
+                  Seus dados foram zerados. Pode começar a cadastrar suas fichas técnicas, insumos e custos reais.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="mt-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-all cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="text-center space-y-2">
+                  <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl mx-auto flex items-center justify-center font-bold">
+                    <AlertTriangle size={28} />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900">Zerar todos os dados?</h3>
+                  <p className="text-xs text-slate-600">
+                    Isso vai apagar permanentemente <strong>todas as fichas técnicas, insumos, custos fixos e custos variáveis</strong> cadastrados nesta conta. Não é possível desfazer essa ação.
+                  </p>
+                </div>
+
+                <label className="flex items-start space-x-3 p-3 rounded-xl border border-red-200 bg-red-50/50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={resetConfirmChecked}
+                    onChange={(e) => setResetConfirmChecked(e.target.checked)}
+                    className="mt-0.5 rounded text-red-600 focus:ring-red-500 w-4 h-4 shrink-0"
+                  />
+                  <span className="text-xs font-bold text-red-900">
+                    Eu entendo que essa ação é irreversível e quero apagar todos os dados cadastrados.
+                  </span>
+                </label>
+
+                <div className="flex items-center space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetModal(false)}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!resetConfirmChecked}
+                    onClick={() => {
+                      onResetAllData?.();
+                      setResetDone(true);
+                    }}
+                    className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer shadow-md"
+                  >
+                    Zerar Definitivamente
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
