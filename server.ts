@@ -180,8 +180,15 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
             parts: [{ text: systemInstruction }]
           },
           temperature: 0.7,
-          // Teto de tokens: força respostas curtas e reduz o tempo de geração (menos texto pra gerar = mais rápido).
-          maxOutputTokens: 350,
+          // Teto de tokens generoso o bastante pra nunca cortar uma resposta no meio — quem
+          // controla o tamanho é a instrução "seja breve" no prompt, não este limite (um valor
+          // baixo aqui cortava a resposta pela metade sem terminar a frase).
+          maxOutputTokens: 1024,
+          // Desliga o "pensamento" interno do modelo: pra um assistente de respostas curtas
+          // isso não é necessário, e em modelos com thinking habilitado por padrão os tokens
+          // de raciocínio consomem o maxOutputTokens ANTES da resposta visível, o que também
+          // causava corte no meio do texto.
+          thinkingConfig: { thinkingBudget: 0 },
         }
       });
 
