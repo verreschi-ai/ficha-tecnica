@@ -26,7 +26,7 @@ export const IfoodLogo: React.FC<IfoodLogoProps> = ({
           className={`font-fredoka font-black tracking-tight ${light ? 'text-white' : 'text-slate-900'}`}
           style={{ fontSize: size * 0.55 }}
         >
-          i<span className="text-[#EA1D2C]">Food</span>
+          i<span className={light ? 'text-white' : 'text-[#EA1D2C]'}>Food</span>
         </span>
       )}
     </div>

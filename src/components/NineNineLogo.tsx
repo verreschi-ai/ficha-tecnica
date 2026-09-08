@@ -26,7 +26,9 @@ export const NineNineLogo: React.FC<NineNineLogoProps> = ({
           className={`font-fredoka font-black tracking-tight ${light ? 'text-white' : 'text-slate-900'}`}
           style={{ fontSize: size * 0.55 }}
         >
-          99<span className="text-[#FFCC00]">Food</span>
+          {/* "Food" evita a cor de marca (amarelo): sobre o próprio fundo amarelo do cabeçalho
+              99Food ficava amarelo-no-amarelo, texto invisível. */}
+          99Food
         </span>
       )}
     </div>

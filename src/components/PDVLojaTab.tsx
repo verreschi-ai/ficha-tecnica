@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { TechnicalSheet, AppSettings } from '../types';
-import { Store, Search, Printer, Calculator, Info } from 'lucide-react';
+import { Store, Search, Printer, Calculator, Info, Gift, Tag, Flame } from 'lucide-react';
 
 interface PDVLojaTabProps {
   sheets: TechnicalSheet[];
@@ -19,6 +19,12 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Promoções do PDV (%/R$ próprios da loja, não de plataforma):
+  const [enableFreeFee, setEnableFreeFee] = useState(false);
+  const [freeFeeValue, setFreeFeeValue] = useState<number>(5.00); // Taxa Grátis: valor em R$ que a loja opta por não cobrar
+  const [enableDiscount, setEnableDiscount] = useState(false);
+  const [discountPct, setDiscountPct] = useState<number>(10.00); // Cupom de Desconto (%)
+
   const taxRate = Number(appSettings.defaultTaxRate) || 6;
   const targetMargin = Number(appSettings.targetReturnMargin) || 20;
 
@@ -28,10 +34,23 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
   // PDV/Balcão é o canal SEM comissão de plataforma — é a referência (baseline) usada como
   // ponto de partida pelo iFood e pelo 99Food, que somam suas próprias taxas em cima disso.
   const metrics = useMemo(() => {
+    const freeFeeRS = enableFreeFee ? freeFeeValue : 0;
+    const discountPctValue = enableDiscount ? discountPct : 0;
+
     return sheets.map((sheet) => {
       const costInsumo = Number(sheet.costPerPortion) || 0;
       const sellPrice = Number(sheet.sellingPrice) || 0;
-      const suggestedPrice = calculateSuggestedPrice(costInsumo);
+
+      // Preço-base (sem promoção): CMV + Custo Fixo rateado + Impostos + Custo Variável + Margem.
+      const basePrice = calculateSuggestedPrice(costInsumo);
+
+      // Preço sugerido COM as promoções ativas: a Taxa Grátis (R$ que a loja absorve) soma-se
+      // ao custo a recuperar, e o Desconto (%) infla o preço pra compensar, igual ao iFood/99Food.
+      const promoDivisor = 1 - discountPctValue / 100;
+      const suggestedPrice = promoDivisor > 0
+        ? Number(((basePrice + freeFeeRS) / promoDivisor).toFixed(2))
+        : Number(((basePrice + freeFeeRS) * 1.5).toFixed(2));
+
       const activePrice = sellPrice > 0 ? sellPrice : suggestedPrice;
 
       const cmvPct = activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : 0;
@@ -42,9 +61,11 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
       if (profitPct < 10) status = 'danger';
       else if (profitPct < targetMargin) status = 'warning';
 
-      return { sheet, costInsumo, sellPrice, suggestedPrice, activePrice, cmvPct, fixedPct, profitPct, status };
+      const hasPromo = enableFreeFee || enableDiscount;
+
+      return { sheet, costInsumo, sellPrice, basePrice, suggestedPrice, activePrice, cmvPct, fixedPct, profitPct, status, hasPromo };
     });
-  }, [sheets, custoFixoPorPratoRS, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
+  }, [sheets, custoFixoPorPratoRS, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice, enableFreeFee, freeFeeValue, enableDiscount, discountPct]);
 
   const filtered = metrics.filter(m =>
     m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -120,6 +141,84 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
         </span>
       </div>
 
+      {/* SIMULADOR DE PROMOÇÕES DO PDV (próprias da loja, não de plataforma) */}
+      <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-200 space-y-4">
+        <div className="border-b border-slate-100 pb-3">
+          <h2 className="text-lg font-bold text-slate-900 font-fredoka flex items-center space-x-2">
+            <Flame size={20} className="text-orange-600" />
+            <span>Simulador de Promoções do Balcão</span>
+          </h2>
+          <p className="text-xs text-slate-500">
+            Ative para ver o preço sugerido já recalculado com a promoção embutida.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* TAXA GRÁTIS (R$) */}
+          <div className={`p-3 rounded-xl border transition-all ${enableFreeFee ? 'bg-emerald-50/50 border-emerald-300' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableFreeFee}
+                  onChange={(e) => setEnableFreeFee(e.target.checked)}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                <Gift size={14} className="text-emerald-700" />
+                <span className="font-bold text-slate-900 text-xs">Taxa Grátis (Valor que você dá)</span>
+              </label>
+              {enableFreeFee && <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded font-bold">Ativa</span>}
+            </div>
+            {enableFreeFee && (
+              <div className="mt-2 flex items-center space-x-2">
+                <span className="text-[10px] text-slate-600">Valor (R$):</span>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={freeFeeValue}
+                  onChange={(e) => setFreeFeeValue(parseFloat(e.target.value) || 0)}
+                  className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                />
+                <span className="text-[10px] text-slate-400">R$ absorvidos pela loja por prato</span>
+              </div>
+            )}
+          </div>
+
+          {/* CUPOM DE DESCONTO (%) */}
+          <div className={`p-3 rounded-xl border transition-all ${enableDiscount ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableDiscount}
+                  onChange={(e) => setEnableDiscount(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+                />
+                <Tag size={14} className="text-amber-700" />
+                <span className="font-bold text-slate-900 text-xs">Cupom de Desconto (%)</span>
+              </label>
+              {enableDiscount && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-bold">Ativo</span>}
+            </div>
+            {enableDiscount && (
+              <div className="mt-2 flex items-center space-x-2">
+                <span className="text-[10px] text-slate-600">Desconto (%):</span>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="100"
+                  value={discountPct}
+                  onChange={(e) => setDiscountPct(parseFloat(e.target.value) || 0)}
+                  className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                />
+                <span className="text-[10px] text-slate-400">%</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -156,6 +255,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
                 <th className="py-3.5 px-4">Produto / Prato</th>
                 <th className="py-3.5 px-4 text-right">CMV</th>
                 <th className="py-3.5 px-4 text-right">Custo Fixo</th>
+                <th className="py-3.5 px-4 text-center">Promoção</th>
                 <th className="py-3.5 px-4 text-right bg-slate-100">Preço Sugerido PDV</th>
                 <th className="py-3.5 px-4 text-right">Preço Praticado</th>
                 <th className="py-3.5 px-4 text-right">Margem</th>
@@ -165,7 +265,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
             <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">Nenhum produto encontrado.</td>
+                  <td colSpan={8} className="py-12 text-center text-slate-400">Nenhum produto encontrado.</td>
                 </tr>
               ) : (
                 filtered.map((m) => (
@@ -182,8 +282,29 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
                       <div className="font-bold text-slate-800">{formatCurrency(custoFixoPorPratoRS)}</div>
                       <div className="text-[10px] text-slate-400">{m.fixedPct.toFixed(1)}%</div>
                     </td>
+                    <td className="py-4 px-4 text-center">
+                      {m.hasPromo ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          {enableFreeFee && (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              🎁 Taxa Grátis R$ {freeFeeValue.toFixed(2).replace('.', ',')}
+                            </span>
+                          )}
+                          {enableDiscount && (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              🏷️ Cupom {discountPct.toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 inline-block">Nenhuma</span>
+                      )}
+                    </td>
                     <td className="py-4 px-4 text-right font-mono font-black text-slate-900 text-sm bg-slate-50">
                       {formatCurrency(m.suggestedPrice)}
+                      {m.hasPromo && (
+                        <div className="text-[9px] text-slate-400 font-normal">sem promo: {formatCurrency(m.basePrice)}</div>
+                      )}
                     </td>
                     <td className="py-4 px-4 text-right font-mono font-semibold text-slate-600">
                       {m.sellPrice > 0 ? formatCurrency(m.sellPrice) : <span className="text-amber-600 text-[10px]">Não Def.</span>}
