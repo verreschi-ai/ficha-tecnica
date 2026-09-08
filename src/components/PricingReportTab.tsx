@@ -5,6 +5,7 @@ import { TechnicalSheet, AppSettings } from '../types';
 interface PricingReportTabProps {
   sheets: TechnicalSheet[];
   fixedCostPct: number;
+  custoFixoPorPratoRS: number;
   variableCostPct: number;
   appSettings: AppSettings;
   calculateSuggestedPrice: (costInsumo: number) => number;
@@ -20,9 +21,11 @@ interface SheetMetrics {
   activePrice: number;
   cmvPct: number;
   fixedCostValue: number;
+  fixedCostPctRow: number;
   variableCostValue: number;
   taxValue: number;
   targetMarginValue: number;
+  totalCostPrice: number;
   profitPct: number;
   profitValue: number;
   status: 'healthy' | 'warning' | 'danger';
@@ -31,6 +34,7 @@ interface SheetMetrics {
 export const PricingReportTab: React.FC<PricingReportTabProps> = ({
   sheets,
   fixedCostPct,
+  custoFixoPorPratoRS,
   variableCostPct,
   appSettings,
   calculateSuggestedPrice,
@@ -56,16 +60,25 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
         ? sheet.cmv
         : (activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : (costInsumo === 0 ? 0 : 100));
 
-      const totalDeductions = cmvPct + fixedCostPct + variableCostPct + taxRate;
+      // Custo Fixo é um valor fixo em R$ por prato (rateado pelo Ticket Médio, não mais um %
+      // igual pra todos) — aqui só convertemos de volta pra % relativo a ESTE prato específico.
+      const fixedCostValue = custoFixoPorPratoRS;
+      const fixedCostPctRow = activePrice > 0 ? Number(((fixedCostValue / activePrice) * 100).toFixed(1)) : 0;
+
+      const totalDeductions = cmvPct + fixedCostPctRow + variableCostPct + taxRate;
       const profitPct = activePrice > 0 ? Number((100 - totalDeductions).toFixed(1)) : 0;
 
       // Valor em R$ de cada fatia percentual, sobre o preço praticado (ou sugerido/estimado
       // quando ainda não há preço definido) — para mostrar valor e porcentagem juntos.
-      const fixedCostValue = Number(((activePrice * fixedCostPct) / 100).toFixed(2));
       const variableCostValue = Number(((activePrice * variableCostPct) / 100).toFixed(2));
       const taxValue = Number(((activePrice * taxRate) / 100).toFixed(2));
       const targetMarginValue = Number(((activePrice * targetMargin) / 100).toFixed(2));
       const profitValue = Number(((activePrice * profitPct) / 100).toFixed(2));
+
+      // Preço com Todos os Custos: quanto o prato custa de verdade (insumo + fatia de custo
+      // fixo + variável + imposto) ANTES de qualquer margem — o "preço de equilíbrio" (lucro
+      // zero) desse prato ao preço praticado atual.
+      const totalCostPrice = Number((costInsumo + fixedCostValue + variableCostValue + taxValue).toFixed(2));
 
       let status: SheetMetrics['status'] = 'healthy';
       if (profitPct < 10) status = 'danger';
@@ -73,11 +86,11 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 
       return {
         sheet, costInsumo, sellPrice, suggestedPrice, activePrice, cmvPct,
-        fixedCostValue, variableCostValue, taxValue, targetMarginValue,
-        profitPct, profitValue, status
+        fixedCostValue, fixedCostPctRow, variableCostValue, taxValue, targetMarginValue,
+        totalCostPrice, profitPct, profitValue, status
       };
     });
-  }, [sheets, fixedCostPct, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
+  }, [sheets, custoFixoPorPratoRS, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
 
   const healthyCount = allMetrics.filter(m => m.status === 'healthy').length;
   const warningCount = allMetrics.filter(m => m.status === 'warning').length;
@@ -113,7 +126,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
             </div>
           </div>
           <p className="text-xs text-slate-500 max-w-2xl pt-1">
-            Compara o preço praticado com o <strong>Preço Sugerido</strong> considerando Custo dos Itens, Impostos ({appSettings.defaultTaxRate}%), Custos Variáveis ({variableCostPct}%), Custos Fixos ({fixedCostPct}%) e Margem Desejada ({appSettings.targetReturnMargin}%).
+            Compara o preço praticado com o <strong>Preço Sugerido</strong> considerando Custo dos Itens, Impostos ({appSettings.defaultTaxRate}%), Custos Variáveis ({variableCostPct}%), Custo Fixo (R$ {custoFixoPorPratoRS.toFixed(2).replace('.', ',')} por prato, rateado pelo Ticket Médio) e Margem Desejada ({appSettings.targetReturnMargin}%).
           </p>
         </div>
 
@@ -215,6 +228,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                 <th className="p-3.5 text-right">Custo Variável</th>
                 <th className="p-3.5 text-right">Impostos</th>
                 <th className="p-3.5 text-right">Margem de Retorno<br/><span className="normal-case font-normal text-slate-400">(configurada)</span></th>
+                <th className="p-3.5 text-right bg-slate-200/70">Preço c/ Todos os Custos<br/><span className="normal-case font-normal text-slate-500">(equilíbrio, lucro zero)</span></th>
                 <th className="p-3.5 text-right">Preço Praticado</th>
                 <th className="p-3.5 text-right text-emerald-700">Preço Sugerido</th>
                 <th className="p-3.5 text-right">Lucro Esperado</th>
@@ -225,12 +239,12 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
             <tbody className="divide-y divide-slate-200">
               {filteredMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-10 text-center text-slate-400 italic">
+                  <td colSpan={12} className="p-10 text-center text-slate-400 italic">
                     Nenhum prato encontrado com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                filteredMetrics.map(({ sheet, costInsumo, sellPrice, suggestedPrice, cmvPct, fixedCostValue, variableCostValue, taxValue, targetMarginValue, profitPct, profitValue, status }) => {
+                filteredMetrics.map(({ sheet, costInsumo, sellPrice, suggestedPrice, cmvPct, fixedCostValue, fixedCostPctRow, variableCostValue, taxValue, targetMarginValue, totalCostPrice, profitPct, profitValue, status }) => {
                   let statusLabel = 'Saudável 🟢';
                   let statusBg = 'bg-emerald-100 text-emerald-900 border-emerald-300';
                   let statusDesc = 'Excelente margem de lucro';
@@ -271,7 +285,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 
                       <td className="p-3.5 text-right font-mono">
                         <div className="font-bold text-slate-900">R$ {fixedCostValue.toFixed(2).replace('.', ',')}</div>
-                        <div className="text-[10px] text-slate-500">{fixedCostPct.toFixed(1).replace('.', ',')}%</div>
+                        <div className="text-[10px] text-slate-500">{fixedCostPctRow.toFixed(1).replace('.', ',')}%</div>
                       </td>
 
                       <td className="p-3.5 text-right font-mono">
@@ -287,6 +301,10 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                       <td className="p-3.5 text-right font-mono">
                         <div className="font-bold text-slate-900">R$ {targetMarginValue.toFixed(2).replace('.', ',')}</div>
                         <div className="text-[10px] text-slate-500">{targetMargin.toFixed(1).replace('.', ',')}%</div>
+                      </td>
+
+                      <td className="p-3.5 text-right font-mono font-bold text-slate-700 bg-slate-50">
+                        R$ {totalCostPrice.toFixed(2).replace('.', ',')}
                       </td>
 
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">

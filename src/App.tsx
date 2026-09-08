@@ -720,6 +720,11 @@ export function App() {
   };
   const totalPayrollVal = fixedCosts.employees.reduce((acc, emp) => acc + calculateEmployeeTotal(emp), 0);
   const totalFixedCostVal = totalFixedExpensesVal + totalPayrollVal;
+  // Métrica de saúde do negócio como um todo (média geral) — usada no Dashboard e no
+  // Simulador de Cenários. NÃO é mais usada para calcular o preço sugerido por prato
+  // (ver custoFixoPorPratoRS abaixo), porque tratar custo fixo como "% do preço de CADA
+  // prato" distorcia pratos baratos e caros de forma desigual e reagia mal quando esse %
+  // ficava alto.
   const fixedCostPct = parseFloat(((totalFixedCostVal / (fixedCosts.monthlyRevenue || appSettings.monthlyRevenue || 1)) * 100).toFixed(1));
 
   const variableCostPct = parseFloat(
@@ -729,18 +734,32 @@ export function App() {
       .toFixed(1)
   );
 
+  // Rateio de Custo Fixo por prato, via Ticket Médio (sem precisar de volume de vendas por
+  // prato, que é volátil e difícil de manter atualizado). Faturamento Médio ÷ Ticket Médio
+  // estima quantos pedidos o estabelecimento faz por mês; dividindo o Custo Fixo Total por
+  // esse volume, chegamos a um valor em R$ fixo por prato — igual pra todos, e não mais um
+  // % do preço de cada um.
+  const ticketMedioGeral = sheets.length > 0
+    ? sheets.reduce((acc, s) => acc + (s.sellingPrice > 0 ? s.sellingPrice : (s.costPerPortion > 0 ? s.costPerPortion * 3.33 : 0)), 0) / sheets.length
+    : 0;
+  const faturamentoMedioMensal = fixedCosts.monthlyRevenue || appSettings.monthlyRevenue || 0;
+  const volumeMensalEstimado = ticketMedioGeral > 0 ? faturamentoMedioMensal / ticketMedioGeral : 0;
+  const custoFixoPorPratoRS = volumeMensalEstimado > 0 ? parseFloat((totalFixedCostVal / volumeMensalEstimado).toFixed(2)) : 0;
+
   // Suggested Price Formula Calculation helper
   const calculateSuggestedPrice = (costInsumo: number) => {
     const taxPct = appSettings.defaultTaxRate || 6.0;
     const varPct = variableCostPct;
-    const fixPct = fixedCostPct;
     const marginPct = appSettings.targetReturnMargin || 20.0;
-    const totalDeductionsPct = taxPct + varPct + fixPct + marginPct;
+    // Custo Fixo entra como valor fixo em R$ somado ao custo do insumo (não escala com o
+    // preço), só Impostos + Variável + Margem continuam sendo % do preço de venda.
+    const costWithOverhead = costInsumo + custoFixoPorPratoRS;
+    const totalPctDeductions = taxPct + varPct + marginPct;
 
-    if (totalDeductionsPct < 90) {
-      return costInsumo / (1 - totalDeductionsPct / 100);
+    if (totalPctDeductions < 90) {
+      return costWithOverhead / (1 - totalPctDeductions / 100);
     }
-    return costInsumo * 3.5;
+    return costWithOverhead * 3.5;
   };
 
 
@@ -1334,6 +1353,7 @@ export function App() {
             <PricingReportTab
               sheets={sheets}
               fixedCostPct={fixedCostPct}
+              custoFixoPorPratoRS={custoFixoPorPratoRS}
               variableCostPct={variableCostPct}
               appSettings={appSettings}
               calculateSuggestedPrice={calculateSuggestedPrice}
