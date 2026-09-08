@@ -1368,6 +1368,7 @@ export function App() {
               sheets={sheets}
               rawIngredients={rawIngredients}
               fixedCostPct={fixedCostPct}
+              custoFixoPorPratoRS={custoFixoPorPratoRS}
               variableCostPct={variableCostPct}
               appSettings={appSettings}
               fixedCosts={fixedCosts}

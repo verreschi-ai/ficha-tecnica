@@ -10,7 +10,10 @@ import {
   Printer,
   Package,
   Building2,
-  Check
+  Check,
+  Target,
+  Lock,
+  AlertTriangle
 } from 'lucide-react';
 import { formatNumeroBRL } from '../utils/formatters';
 
@@ -18,6 +21,7 @@ interface PriceSimulatorTabProps {
   sheets: TechnicalSheet[];
   rawIngredients: RawIngredientItem[];
   fixedCostPct: number;
+  custoFixoPorPratoRS: number;
   variableCostPct: number;
   appSettings: AppSettings;
   fixedCosts: FixedCostsData;
@@ -29,14 +33,22 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
   sheets,
   rawIngredients,
   fixedCostPct,
+  custoFixoPorPratoRS,
   variableCostPct,
   appSettings,
   fixedCosts,
   calculateSuggestedPrice,
   onBatchUpdatePrices,
 }) => {
-  // Mode selection: 'general' | 'ingredient' | 'overhead'
-  const [simulationMode, setSimulationMode] = useState<'general' | 'ingredient' | 'overhead'>('general');
+  // Mode selection: 'general' | 'ingredient' | 'overhead' | 'toc'
+  const [simulationMode, setSimulationMode] = useState<'general' | 'ingredient' | 'overhead' | 'toc'>('general');
+
+  // Mode 4: TOC (Teoria das Restrições) — Preço Mínimo sem Prejuízo.
+  // CMV, Impostos e Custo Variável ficam travados (são os únicos custos que realmente
+  // desaparecem se a venda não acontecer); só Custo Fixo a recuperar e Margem são livres,
+  // pra achar até onde o preço pode cair sem virar prejuízo real.
+  const [tocFixedRecoveryPct, setTocFixedRecoveryPct] = useState<number>(100);
+  const [tocMarginGoal, setTocMarginGoal] = useState<number>(appSettings.targetReturnMargin || 20);
 
   // Mode 1: General Price Adjustment
   const [globalPriceDeltaPct, setGlobalPriceDeltaPct] = useState<number>(0);
@@ -98,8 +110,61 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
     setSimulatedIngredientCustomPrice(null);
     setSimulatedRevenueDeltaPct(0);
     setSimulatedExtraFixedExpense(0);
+    setTocFixedRecoveryPct(100);
+    setTocMarginGoal(appSettings.targetReturnMargin || 20);
     setAppliedSuccessMsg(null);
   };
+
+  // Cenário 4 (TOC): CMV, Impostos e Custo Variável usam sempre o valor REAL cadastrado —
+  // não são simulados aqui de propósito. Só Custo Fixo (via slider de % a recuperar do
+  // rateio real) e Margem são exploráveis livremente.
+  const taxRateToc = Number(appSettings.defaultTaxRate) || 6;
+  const tocMetrics = useMemo(() => {
+    return sheets.map((sheet) => {
+      const costInsumo = Number(sheet.costPerPortion) || 0;
+      const sellPrice = Number(sheet.sellingPrice) || 0;
+
+      // Preço Mínimo Absoluto: 0% de recuperação de custo fixo e 0% de margem — abaixo
+      // disso, cada venda perde dinheiro de caixa de verdade (CMV + Variável + Imposto
+      // já não cabem no preço).
+      const pctDivisorFloor = 1 - (variableCostPct + taxRateToc) / 100;
+      const absoluteFloorPrice = pctDivisorFloor > 0 ? Number((costInsumo / pctDivisorFloor).toFixed(2)) : costInsumo * 2;
+
+      // Preço do Cenário: aplica os sliders (quanto de Custo Fixo recuperar + margem desejada).
+      const fixedRecoveryValue = Number(((custoFixoPorPratoRS * tocFixedRecoveryPct) / 100).toFixed(2));
+      const pctDivisorScenario = 1 - (variableCostPct + taxRateToc + tocMarginGoal) / 100;
+      const scenarioPrice = pctDivisorScenario > 0
+        ? Number(((costInsumo + fixedRecoveryValue) / pctDivisorScenario).toFixed(2))
+        : (costInsumo + fixedRecoveryValue) * 2;
+
+      const variableValueAtScenario = Number(((scenarioPrice * variableCostPct) / 100).toFixed(2));
+      const taxValueAtScenario = Number(((scenarioPrice * taxRateToc) / 100).toFixed(2));
+
+      // Onde o preço PRATICADO hoje está, em relação ao piso absoluto e ao cenário simulado.
+      let situacao: 'prejuizo' | 'so_variavel' | 'seguro' = 'seguro';
+      if (sellPrice > 0 && sellPrice < absoluteFloorPrice) situacao = 'prejuizo';
+      else if (sellPrice > 0 && sellPrice < scenarioPrice) situacao = 'so_variavel';
+
+      return {
+        sheet,
+        costInsumo,
+        sellPrice,
+        absoluteFloorPrice,
+        fixedRecoveryValue,
+        variableValueAtScenario,
+        taxValueAtScenario,
+        scenarioPrice,
+        situacao
+      };
+    });
+  }, [sheets, variableCostPct, taxRateToc, custoFixoPorPratoRS, tocFixedRecoveryPct, tocMarginGoal]);
+
+  const filteredTocMetrics = useMemo(() => {
+    return tocMetrics.filter(m =>
+      m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (m.sheet.category && m.sheet.category.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [tocMetrics, searchTerm]);
 
   // Perform Simulation on each sheet
   const simulatedSheets = useMemo(() => {
@@ -336,7 +401,7 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
       )}
 
       {/* SIMULATION MODE SELECTOR TABS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           onClick={() => setSimulationMode('general')}
           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
@@ -393,6 +458,26 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
             <h4 className="font-bold text-sm leading-tight">Custos Fixos & Faturamento</h4>
             <p className={`text-[11px] mt-0.5 ${simulationMode === 'overhead' ? 'text-zinc-300' : 'text-slate-500'}`}>
               Simular nova equipe, aluguel ou queda de vendas
+            </p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setSimulationMode('toc')}
+          className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+            simulationMode === 'toc'
+              ? 'bg-[#1A1513] text-white border-[#3E2B20] shadow-md'
+              : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider">Cenário 4</span>
+            <Target size={16} className={simulationMode === 'toc' ? 'text-amber-400' : 'text-slate-400'} />
+          </div>
+          <div className="mt-2">
+            <h4 className="font-bold text-sm leading-tight">Preço Mínimo (TOC)</h4>
+            <p className={`text-[11px] mt-0.5 ${simulationMode === 'toc' ? 'text-zinc-300' : 'text-slate-500'}`}>
+              Até onde o preço pode cair sem dar prejuízo
             </p>
           </div>
         </button>
@@ -607,9 +692,87 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
             </div>
           </div>
         )}
+
+        {/* MODE 4 CONTROLS (TOC) */}
+        {simulationMode === 'toc' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-sm text-slate-900 uppercase tracking-wider">
+                Preço Mínimo sem Prejuízo (Teoria das Restrições)
+              </h3>
+              <span className="text-xs text-slate-500 font-medium">Decisão pontual, não é política de preço</span>
+            </div>
+
+            <div className="p-3.5 bg-red-50/60 border border-red-200 rounded-2xl flex items-start gap-2.5">
+              <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-red-800 leading-relaxed">
+                <strong>Use com cuidado:</strong> esse é o piso pra decisões pontuais — pedido extra fora de horário, giro de estoque, promoção específica. Se você passar a vender o cardápio inteiro perto desse piso todo dia, o Custo Fixo deixa de ser coberto por ninguém, e o negócio fecha no vermelho mesmo com cada venda "sem prejuízo individual".
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    % do Custo Fixo que você quer recuperar nesta venda:
+                  </label>
+                  <span className="text-xs font-black font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                    {tocFixedRecoveryPct}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={tocFixedRecoveryPct}
+                  onChange={(e) => setTocFixedRecoveryPct(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-mono">
+                  <span>0% (piso absoluto)</span>
+                  <span>100% (rateio integral)</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    Margem de lucro desejada neste cenário:
+                  </label>
+                  <span className="text-xs font-black font-mono bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                    {tocMarginGoal}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max={Math.max(30, (appSettings.targetReturnMargin || 20) * 2)}
+                  step="1"
+                  value={tocMarginGoal}
+                  onChange={(e) => setTocMarginGoal(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                />
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-mono">
+                  <span>0% (só empatar)</span>
+                  <span>Meta atual: {appSettings.targetReturnMargin || 20}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5">
+              <Lock size={13} className="text-slate-400 shrink-0" />
+              <span>
+                <strong className="text-slate-700">CMV, Impostos ({taxRateToc}%) e Custo Variável ({variableCostPct}%) travados</strong> nos valores reais cadastrados — são os únicos custos que desaparecem de verdade se a venda não acontecer, então não fazem sentido serem "flexibilizados" numa análise de piso de preço.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* TOP COMPARATIVE KPI CARDS (BEFORE VS AFTER) */}
+      {/* TOP COMPARATIVE KPI CARDS (BEFORE VS AFTER) — não se aplica ao Cenário 4 (TOC), que tem seu próprio resumo */}
+      {simulationMode !== 'toc' && (
+      <>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="bento-card">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">CMV Médio Simulado</span>
@@ -815,6 +978,152 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {/* CENÁRIO 4 (TOC): KPIs + TABELA PRÓPRIA */}
+      {simulationMode === 'toc' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bento-card">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Custo Fixo Considerado</span>
+              <div className="flex items-baseline justify-between mt-3">
+                <span className="text-3xl font-black font-mono text-slate-900">R$ {((custoFixoPorPratoRS * tocFixedRecoveryPct) / 100).toFixed(2).replace('.', ',')}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">de R$ {custoFixoPorPratoRS.toFixed(2).replace('.', ',')} (rateio integral real)</span>
+            </div>
+
+            <div className="bento-card">
+              <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider block flex items-center gap-1">
+                <ShieldAlert size={14} /> Vendidos Abaixo do Piso Absoluto
+              </span>
+              <div className="flex items-baseline justify-between mt-3">
+                <span className="text-3xl font-black font-mono text-red-900">
+                  {tocMetrics.filter(m => m.situacao === 'prejuizo').length}
+                </span>
+                <span className="text-xs font-bold text-slate-500">de {sheets.length}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">Prejuízo de caixa real, hoje, no preço praticado</span>
+            </div>
+
+            <div className="bento-card">
+              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block flex items-center gap-1">
+                <AlertTriangle size={14} /> Só Cobrindo Variável (sem Fixo/Margem)
+              </span>
+              <div className="flex items-baseline justify-between mt-3">
+                <span className="text-3xl font-black font-mono text-amber-900">
+                  {tocMetrics.filter(m => m.situacao === 'so_variavel').length}
+                </span>
+                <span className="text-xs font-bold text-slate-500">de {sheets.length}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">Acima do piso, mas abaixo do cenário simulado</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 uppercase tracking-wider">
+                  Piso de Preço por Prato (Teoria das Restrições)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  CMV, Impostos e Custo Variável travados no valor real — só Custo Fixo e Margem seguem os sliders acima.
+                </p>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrar prato..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs font-medium text-slate-900 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="p-3.5">Prato / Receita</th>
+                    <th className="p-3.5 text-right"><span className="inline-flex items-center gap-1"><Lock size={10} />CMV</span></th>
+                    <th className="p-3.5 text-right"><span className="inline-flex items-center gap-1"><Lock size={10} />Variável</span></th>
+                    <th className="p-3.5 text-right"><span className="inline-flex items-center gap-1"><Lock size={10} />Impostos</span></th>
+                    <th className="p-3.5 text-right">Fixo Considerado</th>
+                    <th className="p-3.5 text-right bg-red-50/60 text-red-800">Piso Absoluto<br/><span className="normal-case font-normal text-red-500">(0% fixo, 0% margem)</span></th>
+                    <th className="p-3.5 text-right bg-emerald-50/60 text-emerald-800">Preço do Cenário</th>
+                    <th className="p-3.5 text-right">Preço Praticado</th>
+                    <th className="p-3.5 text-center">Situação Hoje</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredTocMetrics.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-10 text-center text-slate-400 italic">
+                        Nenhum prato correspondente ao filtro.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredTocMetrics.map(({ sheet, costInsumo, sellPrice, absoluteFloorPrice, fixedRecoveryValue, variableValueAtScenario, taxValueAtScenario, scenarioPrice, situacao }) => (
+                      <tr key={sheet.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3.5 font-bold text-slate-950">
+                          <div className="text-xs font-black">{sheet.name}</div>
+                          <div className="text-[10px] text-slate-500 font-normal">{sheet.category || 'Geral'}</div>
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono text-slate-500">
+                          R$ {costInsumo.toFixed(2).replace('.', ',')}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono text-slate-500">
+                          R$ {variableValueAtScenario.toFixed(2).replace('.', ',')}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono text-slate-500">
+                          R$ {taxValueAtScenario.toFixed(2).replace('.', ',')}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono font-bold text-blue-800">
+                          R$ {fixedRecoveryValue.toFixed(2).replace('.', ',')}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono font-black text-red-800 bg-red-50/40">
+                          R$ {absoluteFloorPrice.toFixed(2).replace('.', ',')}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono font-black text-emerald-800 bg-emerald-50/40">
+                          R$ {scenarioPrice.toFixed(2).replace('.', ',')}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono font-bold text-slate-900">
+                          {sellPrice > 0 ? `R$ ${sellPrice.toFixed(2).replace('.', ',')}` : <span className="text-amber-600 text-[10px]">Não Def.</span>}
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          {situacao === 'prejuizo' ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold border inline-block bg-red-200 text-red-900 border-red-300">
+                              ⛔ Prejuízo real
+                            </span>
+                          ) : situacao === 'so_variavel' ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold border inline-block bg-amber-100 text-amber-900 border-amber-300">
+                              🟡 Abaixo do cenário
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold border inline-block bg-emerald-100 text-emerald-900 border-emerald-300">
+                              🟢 Seguro
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
