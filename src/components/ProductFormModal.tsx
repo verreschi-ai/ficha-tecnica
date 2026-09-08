@@ -184,7 +184,18 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       cmv,
       margin,
       status: 'ideal',
-      ingredients: ingredients.map(({ name, qty, unit, unitPrice }) => ({ name, qty, unit, unitPrice })),
+      // O tipo Ingredient (e o motor de recálculo em cascata no App.tsx) espera grossQty/netQty/fc/
+      // totalCost — não "qty". Salvar como "qty" faz grossQty ficar undefined, e undefined * preço
+      // vira NaN, que o `Number(...) || 0` de todo o resto do app disfarça como um custo de R$ 0,00.
+      ingredients: ingredients.map(({ name, qty, unit, unitPrice }) => ({
+        name,
+        grossQty: qty,
+        netQty: qty,
+        unit,
+        unitPrice,
+        fc: 1,
+        totalCost: parseFloat((qty * unitPrice).toFixed(2))
+      })),
       preparationSteps: steps.filter(s => s.trim().length > 0),
       createdAt: initialSheet?.createdAt || new Date().toLocaleDateString('pt-BR')
     };

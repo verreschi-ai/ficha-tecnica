@@ -184,13 +184,21 @@ const recalculateSheets = (
   for (let pass = 0; pass < 2; pass++) {
     sheetsCopy = sheetsCopy.map((sheet) => {
       const updatedIngredients = sheet.ingredients.map((ing) => {
+        // Auto-cura de fichas salvas antes da correção do formulário de cadastro, que gravava a
+        // quantidade como "qty" em vez de "grossQty" — isso fazia grossQty ficar undefined e todo
+        // custo virar NaN (mascarado como R$ 0,00 pelo `Number(...) || 0` usado no resto do app).
+        const safeGrossQty = ing.grossQty > 0 ? ing.grossQty : ((ing as any).qty > 0 ? (ing as any).qty : 0);
+        if (safeGrossQty !== ing.grossQty) {
+          ing = { ...ing, grossQty: safeGrossQty, netQty: ing.netQty > 0 ? ing.netQty : safeGrossQty };
+        }
+
         // 1. Check if ingredient matches a raw ingredient
         const foundRaw = currentIngredients.find(
           (r) => r.name.toLowerCase().trim() === ing.name.toLowerCase().trim()
         );
         if (foundRaw) {
           const newUnitPrice = foundRaw.unitPrice;
-          const totalCost = parseFloat((ing.grossQty * newUnitPrice).toFixed(2));
+          const totalCost = parseFloat((safeGrossQty * newUnitPrice).toFixed(2));
           return {
             ...ing,
             unitPrice: newUnitPrice,
@@ -205,7 +213,7 @@ const recalculateSheets = (
         );
         if (foundSubRecipe) {
           const subCostPerPortion = foundSubRecipe.yieldServings > 0 ? foundSubRecipe.totalRecipeCost / foundSubRecipe.yieldServings : foundSubRecipe.totalRecipeCost;
-          const totalCost = parseFloat((ing.grossQty * subCostPerPortion).toFixed(2));
+          const totalCost = parseFloat((safeGrossQty * subCostPerPortion).toFixed(2));
           return {
             ...ing,
             unitPrice: subCostPerPortion,
@@ -217,7 +225,7 @@ const recalculateSheets = (
           ...ing,
           unitPrice: ing.unitPrice > 0 ? ing.unitPrice : 12.00,
           unit: ing.unit || 'kg',
-          totalCost: parseFloat((ing.grossQty * (ing.unitPrice > 0 ? ing.unitPrice : 12.00)).toFixed(2))
+          totalCost: parseFloat((safeGrossQty * (ing.unitPrice > 0 ? ing.unitPrice : 12.00)).toFixed(2))
         };
       });
 

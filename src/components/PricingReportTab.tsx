@@ -194,17 +194,19 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                 <th className="p-3.5">Prato / Receita</th>
                 <th className="p-3.5 text-right">Custo Itens</th>
                 <th className="p-3.5 text-right">CMV</th>
+                <th className="p-3.5 text-right">C. Fixo</th>
+                <th className="p-3.5 text-right">C. Variável</th>
                 <th className="p-3.5 text-right">Preço Praticado</th>
                 <th className="p-3.5 text-right text-emerald-700">Preço Sugerido</th>
-                <th className="p-3.5 text-right">Margem Líquida</th>
-                <th className="p-3.5 text-center">Status de Saúde</th>
+                <th className="p-3.5 text-right">Lucro Esperado</th>
+                <th className="p-3.5 text-center">Status</th>
                 <th className="p-3.5 text-right">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-10 text-center text-slate-400 italic">
+                  <td colSpan={10} className="p-10 text-center text-slate-400 italic">
                     Nenhum prato encontrado com os filtros selecionados.
                   </td>
                 </tr>
@@ -248,6 +250,14 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">
                         {cmvPct.toFixed(1).replace('.', ',')}%
+                      </td>
+
+                      <td className="p-3.5 text-right font-mono text-slate-600">
+                        {fixedCostPct.toFixed(1).replace('.', ',')}%
+                      </td>
+
+                      <td className="p-3.5 text-right font-mono text-slate-600">
+                        {variableCostPct.toFixed(1).replace('.', ',')}%
                       </td>
 
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">
