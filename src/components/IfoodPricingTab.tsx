@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { TechnicalSheet } from '../types';
+import { TechnicalSheet, AppSettings } from '../types';
 import { ShoppingCart, Store, Bike, Percent, DollarSign, Search, Sparkles, AlertCircle, Info, Calculator, Tag, Flame, Gift, CheckCircle2, Printer } from 'lucide-react';
 import { IfoodLogo } from './IfoodLogo';
 
 interface IfoodPricingTabProps {
   sheets: TechnicalSheet[];
+  custoFixoPorPratoRS: number;
+  appSettings: AppSettings;
+  calculateSuggestedPrice: (costInsumo: number) => number;
 }
 
-export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
+export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, custoFixoPorPratoRS, appSettings, calculateSuggestedPrice }) => {
+  const taxRate = Number(appSettings.defaultTaxRate) || 6;
   // Delivery Plan state
   const [deliveryPlan, setDeliveryPlan] = useState<'store' | 'partner'>('store');
   const [commissionRate, setCommissionRate] = useState<number>(12); // 12% default for store delivery
@@ -63,7 +67,10 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
     if (!printWindow) return;
 
     const rowsHtml = filteredSheets.map((sheet) => {
-      const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : sheet.costPerPortion * 2.5;
+      // Base = preço de balcão real, ou (quando ainda não cadastrado) o mesmo motor do
+      // Relatório de Precificação — CMV + Custo Fixo rateado + Impostos + Margem Meta —
+      // em vez do antigo "custo × 2,5" arbitrário e desconectado da configuração real.
+      const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : calculateSuggestedPrice(sheet.costPerPortion);
       
       let itemDiscountPct = 0;
       if (enableHIT) {
@@ -122,7 +129,7 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
               Precificação iFood com Campanhas & Cumulatividade
             </h1>
             <p className="text-red-100 text-sm sm:text-base max-w-2xl font-medium">
-              Simule planos, taxas e regras de campanhas (HIT vs DI vs CI + Taxa Grátis) garantindo que sua margem de lucro permaneça blindada.
+              Simule planos, taxas e campanhas (cupom de desconto, taxa grátis) já considerando o CMV, Custo Fixo e Impostos reais do seu negócio — não só a taxa do iFood.
             </p>
           </div>
 
@@ -359,7 +366,7 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
                     onChange={(e) => setEnableDI(e.target.checked)}
                     className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
                   />
-                  <span className="font-bold text-slate-900 text-xs">Desconto em Item (DI)</span>
+                  <span className="font-bold text-slate-900 text-xs">Desconto em Item (DI) — Cupom de Desconto</span>
                 </label>
                 {enableDI && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-bold">100% Restaurante</span>}
               </div>
@@ -476,7 +483,10 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
                 </tr>
               ) : (
                 filteredSheets.map((sheet) => {
-                  const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : sheet.costPerPortion * 2.5;
+                  // Base = preço de balcão real, ou (quando ainda não cadastrado) o mesmo motor do
+      // Relatório de Precificação — CMV + Custo Fixo rateado + Impostos + Margem Meta —
+      // em vez do antigo "custo × 2,5" arbitrário e desconectado da configuração real.
+      const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : calculateSuggestedPrice(sheet.costPerPortion);
 
                   // Apply business rules for cumulativity (exclusively in %):
                   // 1. HIT vs (CI / DI): HIT overrides CI/DI on the item.
@@ -523,9 +533,15 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
                   const divisor = 1 - deductionDecimal;
                   const ifoodSuggestedPrice = divisor > 0 ? basePrice / divisor : basePrice * 1.5;
 
-                  // Net revenue received by restaurant after taxes and campaigns:
+                  // Net revenue received by restaurant after iFood's own fees and campaigns:
                   const netReceived = ifoodSuggestedPrice * (1 - (totalTaxPercent / 100) - (totalCampaignPct / 100));
-                  const netMarginPercent = ifoodSuggestedPrice > 0 ? ((netReceived - sheet.costPerPortion) / ifoodSuggestedPrice) * 100 : sheet.margin;
+                  // Margem de verdade: também desconta Custo Fixo (rateio real por prato) e os
+                  // Impostos do PRÓPRIO restaurante (Simples Nacional etc.) — esses continuam
+                  // devidos independente do canal de venda, e antes não entravam nessa conta.
+                  const taxValueAtIfoodPrice = (ifoodSuggestedPrice * taxRate) / 100;
+                  const netMarginPercent = ifoodSuggestedPrice > 0
+                    ? ((netReceived - sheet.costPerPortion - custoFixoPorPratoRS - taxValueAtIfoodPrice) / ifoodSuggestedPrice) * 100
+                    : sheet.margin;
 
                   return (
                     <tr key={sheet.id} className="hover:bg-slate-50/80 transition-colors">
@@ -583,7 +599,7 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets }) => {
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center space-x-3 text-xs text-slate-600">
           <Sparkles size={16} className="text-orange-600 shrink-0" />
           <span>
-            <strong>Garantia de Margem iFood:</strong> O motor calcula o impacto exato da cumulatividade (Hits substitui descontos de item; CI e DI avaliam o pior cenário; Taxa Grátis soma-se como exceção cumulativa) para blindar seu lucro líquido.
+            <strong>Garantia de Margem iFood:</strong> O motor calcula o impacto exato da cumulatividade (Hits substitui descontos de item; CI e DI avaliam o pior cenário; Taxa Grátis soma-se como exceção cumulativa) e a Margem Líquida já desconta CMV, Custo Fixo rateado e Impostos do seu negócio — não só a taxa do iFood.
           </span>
         </div>
 

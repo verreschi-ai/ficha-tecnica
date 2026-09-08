@@ -49,6 +49,7 @@ import { PixPaymentModal } from './components/PixPaymentModal';
 import { SubscriptionTab } from './components/SubscriptionTab';
 import { SubscriptionBarrierModal } from './components/SubscriptionBarrierModal';
 import { CreditCardCheckoutModal } from './components/CreditCardCheckoutModal';
+import { PDVLojaTab } from './components/PDVLojaTab';
 import { IfoodPricingTab } from './components/IfoodPricingTab';
 import { NineninePricingTab } from './components/NineninePricingTab';
 import { PricingReportTab } from './components/PricingReportTab';
@@ -1377,14 +1378,35 @@ export function App() {
             />
           )}
 
+          {/* TAB: PDV LOJA ⭐ NOVO — canal de referência sem comissão de plataforma */}
+          {activeTab === 'pdv-loja' && (
+            <PDVLojaTab
+              sheets={sheets}
+              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              variableCostPct={variableCostPct}
+              appSettings={appSettings}
+              calculateSuggestedPrice={calculateSuggestedPrice}
+            />
+          )}
+
           {/* TAB: PREÇO IFOOD ⭐ NOVO */}
           {activeTab === 'ifood' && (
-            <IfoodPricingTab sheets={sheets} />
+            <IfoodPricingTab
+              sheets={sheets}
+              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              appSettings={appSettings}
+              calculateSuggestedPrice={calculateSuggestedPrice}
+            />
           )}
 
           {/* TAB: PREÇO 99FOOD 🚗 NOVO */}
           {activeTab === '99food' && (
-            <NineninePricingTab sheets={sheets} />
+            <NineninePricingTab
+              sheets={sheets}
+              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              appSettings={appSettings}
+              calculateSuggestedPrice={calculateSuggestedPrice}
+            />
           )}
 
           {/* TAB 6: COMUNIDADE (SPEC 3.9) */}

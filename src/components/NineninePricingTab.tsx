@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { TechnicalSheet } from '../types';
+import { TechnicalSheet, AppSettings } from '../types';
 import { ShoppingCart, Store, Car, Percent, DollarSign, Search, Sparkles, AlertCircle, Info, Calculator, Tag, Flame, Printer } from 'lucide-react';
 import { NineNineLogo } from './NineNineLogo';
 
 interface NineninePricingTabProps {
   sheets: TechnicalSheet[];
+  custoFixoPorPratoRS: number;
+  appSettings: AppSettings;
+  calculateSuggestedPrice: (costInsumo: number) => number;
 }
 
-export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }) => {
+export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, custoFixoPorPratoRS, appSettings, calculateSuggestedPrice }) => {
+  const taxRate = Number(appSettings.defaultTaxRate) || 6;
   // Logistics Plan state
   const [logisticsPlan, setLogisticsPlan] = useState<'store' | 'platform'>('store');
   const [commissionRate, setCommissionRate] = useState<number>(10.9); // 10.9% default for store delivery
@@ -61,7 +65,10 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
     if (!printWindow) return;
 
     const rowsHtml = filteredSheets.map((sheet) => {
-      const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : sheet.costPerPortion * 2.5;
+      // Base = preço de balcão real, ou (quando ainda não cadastrado) o mesmo motor do
+      // Relatório de Precificação — CMV + Custo Fixo rateado + Impostos + Margem Meta —
+      // em vez do antigo "custo × 2,5" arbitrário e desconectado da configuração real.
+      const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : calculateSuggestedPrice(sheet.costPerPortion);
       
       let totalCampaignPct = 0;
       if (enableMyInvestment) totalCampaignPct += myInvestmentPct;
@@ -117,7 +124,7 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
               Precificação 99Food com Planos de Logística & Campanhas
             </h1>
             <p className="text-slate-800 text-sm sm:text-base max-w-2xl font-medium">
-              Simule planos de entrega (Própria vs Logística 99), taxas de comissão e campanhas promocionais para garantir margens sólidas no 99Food.
+              Simule planos de entrega, taxas de comissão e campanhas (cupom de desconto, taxa grátis) já considerando o CMV, Custo Fixo e Impostos reais do seu negócio — não só a taxa do 99Food.
             </p>
           </div>
 
@@ -295,7 +302,7 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
                     onChange={(e) => setEnableMyInvestment(e.target.checked)}
                     className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
                   />
-                  <span className="font-bold text-slate-900 text-xs">Meu Investimento</span>
+                  <span className="font-bold text-slate-900 text-xs">Meu Investimento — Cupom de Desconto</span>
                 </label>
                 {enableMyInvestment && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-bold">100% Loja</span>}
               </div>
@@ -443,7 +450,10 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
                 </tr>
               ) : (
                 filteredSheets.map((sheet) => {
-                  const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : sheet.costPerPortion * 2.5;
+                  // Base = preço de balcão real, ou (quando ainda não cadastrado) o mesmo motor do
+      // Relatório de Precificação — CMV + Custo Fixo rateado + Impostos + Margem Meta —
+      // em vez do antigo "custo × 2,5" arbitrário e desconectado da configuração real.
+      const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : calculateSuggestedPrice(sheet.costPerPortion);
 
                   // Campaigns sum (cumulative on 99Food as requested)
                   let totalCampaignPct = 0;
@@ -470,9 +480,15 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
                   const divisor = 1 - deductionDecimal;
                   const ninenineSuggestedPrice = divisor > 0 ? (basePrice + logisticsFeeAddon) / divisor : basePrice * 1.5;
 
-                  // Net revenue received by restaurant after taxes and campaigns:
+                  // Net revenue received by restaurant after 99Food's own fees and campaigns:
                   const netReceived = ninenineSuggestedPrice * (1 - (totalTaxPercent / 100) - (totalCampaignPct / 100)) - logisticsFeeAddon;
-                  const netMarginPercent = ninenineSuggestedPrice > 0 ? ((netReceived - sheet.costPerPortion) / ninenineSuggestedPrice) * 100 : sheet.margin;
+                  // Margem de verdade: também desconta Custo Fixo (rateio real por prato) e os
+                  // Impostos do PRÓPRIO restaurante (Simples Nacional etc.) — esses continuam
+                  // devidos independente do canal de venda, e antes não entravam nessa conta.
+                  const taxValueAtNineninePrice = (ninenineSuggestedPrice * taxRate) / 100;
+                  const netMarginPercent = ninenineSuggestedPrice > 0
+                    ? ((netReceived - sheet.costPerPortion - custoFixoPorPratoRS - taxValueAtNineninePrice) / ninenineSuggestedPrice) * 100
+                    : sheet.margin;
 
                   return (
                     <tr key={sheet.id} className="hover:bg-slate-50/80 transition-colors">
@@ -531,7 +547,7 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets }
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center space-x-3 text-xs text-slate-600">
           <Sparkles size={16} className="text-amber-600 shrink-0" />
           <span>
-            <strong>Garantia de Margem 99Food:</strong> O motor calcula o impacto exato da comissão do plano escolhido, dedução de campanhas promocionais e absorção do custo logístico adicional para blindar seu lucro líquido.
+            <strong>Garantia de Margem 99Food:</strong> O motor calcula o impacto exato da comissão do plano escolhido, dedução de campanhas promocionais e absorção do custo logístico adicional — e a Margem Líquida já desconta CMV, Custo Fixo rateado e Impostos do seu negócio, não só a taxa do 99Food.
           </span>
         </div>
 

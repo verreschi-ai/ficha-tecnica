@@ -24,7 +24,8 @@ import {
   ShoppingCart,
   Car,
   Sliders,
-  Wand2
+  Wand2,
+  Store
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -76,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'CANAIS & DELIVERY',
       items: [
+        { id: 'pdv-loja' as ActiveTabType, label: 'PDV Loja', icon: Store, badgeText: 'NOVO' },
         { id: 'ifood' as ActiveTabType, label: 'Preço iFood ⭐', icon: ShoppingCart, badgeText: 'NOVO' },
         { id: '99food' as ActiveTabType, label: 'Preço 99Food 🚗', icon: Car, badgeText: 'NOVO' },
       ]

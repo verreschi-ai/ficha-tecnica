@@ -116,6 +116,7 @@ export type ActiveTabType =
   | 'fichas'
   | 'precificacao'
   | 'simulador'
+  | 'pdv-loja'
   | 'ifood'
   | '99food'
   | 'comunidade'
