@@ -19,7 +19,12 @@ interface SheetMetrics {
   suggestedPrice: number;
   activePrice: number;
   cmvPct: number;
+  fixedCostValue: number;
+  variableCostValue: number;
+  taxValue: number;
+  targetMarginValue: number;
   profitPct: number;
+  profitValue: number;
   status: 'healthy' | 'warning' | 'danger';
 }
 
@@ -54,11 +59,23 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
       const totalDeductions = cmvPct + fixedCostPct + variableCostPct + taxRate;
       const profitPct = activePrice > 0 ? Number((100 - totalDeductions).toFixed(1)) : 0;
 
+      // Valor em R$ de cada fatia percentual, sobre o preço praticado (ou sugerido/estimado
+      // quando ainda não há preço definido) — para mostrar valor e porcentagem juntos.
+      const fixedCostValue = Number(((activePrice * fixedCostPct) / 100).toFixed(2));
+      const variableCostValue = Number(((activePrice * variableCostPct) / 100).toFixed(2));
+      const taxValue = Number(((activePrice * taxRate) / 100).toFixed(2));
+      const targetMarginValue = Number(((activePrice * targetMargin) / 100).toFixed(2));
+      const profitValue = Number(((activePrice * profitPct) / 100).toFixed(2));
+
       let status: SheetMetrics['status'] = 'healthy';
       if (profitPct < 10) status = 'danger';
       else if (profitPct < targetMargin) status = 'warning';
 
-      return { sheet, costInsumo, sellPrice, suggestedPrice, activePrice, cmvPct, profitPct, status };
+      return {
+        sheet, costInsumo, sellPrice, suggestedPrice, activePrice, cmvPct,
+        fixedCostValue, variableCostValue, taxValue, targetMarginValue,
+        profitPct, profitValue, status
+      };
     });
   }, [sheets, fixedCostPct, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
 
@@ -140,7 +157,8 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
           className={`bento-card cursor-pointer ${statusFilter === 'warning' ? 'border-amber-600 ring-2 ring-amber-500/10 bg-amber-50/30' : 'hover:border-amber-200'}`}
         >
           <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
-            <AlertTriangle size={15} /> Margem Apertada (10-{appSettings.targetReturnMargin - 0.1}%)
+            <AlertTriangle size={15} /> Margem Apertada
+            ({targetMargin > 10 ? `10-${(targetMargin - 0.1).toFixed(1)}` : `< ${targetMargin.toFixed(1)}`}%)
           </span>
           <div className="flex items-baseline justify-between mt-3">
             <span className="text-3xl font-black font-mono text-amber-900">{warningCount}</span>
@@ -192,10 +210,11 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
             <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
               <tr>
                 <th className="p-3.5">Prato / Receita</th>
-                <th className="p-3.5 text-right">Custo Itens</th>
-                <th className="p-3.5 text-right">CMV</th>
-                <th className="p-3.5 text-right">C. Fixo</th>
-                <th className="p-3.5 text-right">C. Variável</th>
+                <th className="p-3.5 text-right">CMV<br/><span className="normal-case font-normal text-slate-400">(Custo Itens)</span></th>
+                <th className="p-3.5 text-right">Custo Fixo</th>
+                <th className="p-3.5 text-right">Custo Variável</th>
+                <th className="p-3.5 text-right">Impostos</th>
+                <th className="p-3.5 text-right">Margem de Retorno<br/><span className="normal-case font-normal text-slate-400">(configurada)</span></th>
                 <th className="p-3.5 text-right">Preço Praticado</th>
                 <th className="p-3.5 text-right text-emerald-700">Preço Sugerido</th>
                 <th className="p-3.5 text-right">Lucro Esperado</th>
@@ -206,12 +225,12 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
             <tbody className="divide-y divide-slate-200">
               {filteredMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-10 text-center text-slate-400 italic">
+                  <td colSpan={11} className="p-10 text-center text-slate-400 italic">
                     Nenhum prato encontrado com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                filteredMetrics.map(({ sheet, costInsumo, sellPrice, suggestedPrice, cmvPct, profitPct, status }) => {
+                filteredMetrics.map(({ sheet, costInsumo, sellPrice, suggestedPrice, cmvPct, fixedCostValue, variableCostValue, taxValue, targetMarginValue, profitPct, profitValue, status }) => {
                   let statusLabel = 'Saudável 🟢';
                   let statusBg = 'bg-emerald-100 text-emerald-900 border-emerald-300';
                   let statusDesc = 'Excelente margem de lucro';
@@ -244,20 +263,30 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                         <div className="text-[10px] text-slate-500 font-normal">{sheet.category || 'Geral'}</div>
                       </td>
 
-                      <td className="p-3.5 text-right font-mono font-semibold text-slate-800">
-                        R$ {costInsumo.toFixed(2).replace('.', ',')}
+                      {/* CMV = Custo Itens (R$) em cima, % em baixo — é a mesma informação, uma coluna só */}
+                      <td className="p-3.5 text-right font-mono">
+                        <div className="font-bold text-slate-900">R$ {costInsumo.toFixed(2).replace('.', ',')}</div>
+                        <div className="text-[10px] text-slate-500">{cmvPct.toFixed(1).replace('.', ',')}%</div>
                       </td>
 
-                      <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                        {cmvPct.toFixed(1).replace('.', ',')}%
+                      <td className="p-3.5 text-right font-mono">
+                        <div className="font-bold text-slate-900">R$ {fixedCostValue.toFixed(2).replace('.', ',')}</div>
+                        <div className="text-[10px] text-slate-500">{fixedCostPct.toFixed(1).replace('.', ',')}%</div>
                       </td>
 
-                      <td className="p-3.5 text-right font-mono text-slate-600">
-                        {fixedCostPct.toFixed(1).replace('.', ',')}%
+                      <td className="p-3.5 text-right font-mono">
+                        <div className="font-bold text-slate-900">R$ {variableCostValue.toFixed(2).replace('.', ',')}</div>
+                        <div className="text-[10px] text-slate-500">{variableCostPct.toFixed(1).replace('.', ',')}%</div>
                       </td>
 
-                      <td className="p-3.5 text-right font-mono text-slate-600">
-                        {variableCostPct.toFixed(1).replace('.', ',')}%
+                      <td className="p-3.5 text-right font-mono">
+                        <div className="font-bold text-slate-900">R$ {taxValue.toFixed(2).replace('.', ',')}</div>
+                        <div className="text-[10px] text-slate-500">{taxRate.toFixed(1).replace('.', ',')}%</div>
+                      </td>
+
+                      <td className="p-3.5 text-right font-mono">
+                        <div className="font-bold text-slate-900">R$ {targetMarginValue.toFixed(2).replace('.', ',')}</div>
+                        <div className="text-[10px] text-slate-500">{targetMargin.toFixed(1).replace('.', ',')}%</div>
                       </td>
 
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">
@@ -270,7 +299,10 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 
                       <td className="p-3.5 text-right font-mono min-w-[110px]">
                         <div className={`font-black ${profitPct >= targetMargin ? 'text-emerald-700' : profitPct >= 10 ? 'text-amber-700' : 'text-red-700'}`}>
-                          {profitPct > 0 ? `+${profitPct.toFixed(1)}%` : `${profitPct.toFixed(1)}%`}
+                          R$ {profitValue.toFixed(2).replace('.', ',')}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {profitPct > 0 ? `+${profitPct.toFixed(1)}` : profitPct.toFixed(1)}%
                         </div>
                         <div className="h-1.5 w-full bg-slate-100 rounded-full mt-1.5 overflow-hidden">
                           <div className={`h-full rounded-full ${barColor}`} style={{ width: `${barWidthPct}%` }} />
