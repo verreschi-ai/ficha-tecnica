@@ -1521,6 +1521,7 @@ export function App() {
               onNavigateToSubscription={() => setActiveTab('assinatura')}
               onResetAllData={handleResetAllData}
               categoriesList={categoriesList}
+              onAddCategory={handleAddCategory}
             />
           )}
 
