@@ -686,6 +686,14 @@ export function App() {
     return matchesCat && matchesSearch;
   });
 
+  // Diagnóstico: fichas com insumo de quantidade zerada/ausente apesar de ter preço unitário —
+  // sinal de que a quantidade real foi perdida (ex.: produto reaberto e resalvo durante a janela
+  // entre a correção do salvamento e a correção do carregamento). Nesses casos não há como
+  // recuperar o valor automaticamente; precisa reconferir e digitar a quantidade de novo.
+  const sheetHasZeroedIngredient = (sheet: TechnicalSheet) =>
+    sheet.ingredients.some((ing) => (!ing.grossQty || ing.grossQty <= 0) && (ing.unitPrice || 0) > 0);
+  const sheetsNeedingReview = sheets.filter(sheetHasZeroedIngredient);
+
   // Calculate counts for Painel de Comando
   const rawItemsCount = rawIngredients.filter((i) => !i.isRecipe).length;
   const recipesCount = rawIngredients.filter((i) => i.isRecipe).length;
@@ -1216,6 +1224,28 @@ export function App() {
                 </div>
               )}
 
+              {/* DIAGNÓSTICO: FICHAS COM QUANTIDADE DE INSUMO ZERADA/AUSENTE */}
+              {sheetsNeedingReview.length > 0 && (
+                <div className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-2xl space-y-2 text-xs">
+                  <div className="flex items-center space-x-2 font-bold">
+                    <AlertTriangle size={18} className="text-red-600 shrink-0" />
+                    <span>{sheetsNeedingReview.length} ficha(s) com quantidade de insumo zerada ou ausente — precisa reconferir:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pl-6">
+                    {sheetsNeedingReview.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => handleOpenEdit(s)}
+                        className="bg-white hover:bg-red-100 border border-red-300 text-red-800 font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      >
+                        {s.name} →
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* PRODUCT CARDS LISTING */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredSheets.map((sheet) => {
@@ -1237,13 +1267,24 @@ export function App() {
                             {sheet.name}
                           </h3>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                          isActive
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-slate-100 text-slate-600 border-slate-200'
-                        }`}>
-                          {isActive ? '● Ativo' : '○ Inativo'}
-                        </span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isActive
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}>
+                            {isActive ? '● Ativo' : '○ Inativo'}
+                          </span>
+                          {sheetHasZeroedIngredient(sheet) && (
+                            <span
+                              className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200"
+                              title="Insumo com quantidade zerada/ausente — reconferir"
+                            >
+                              <AlertTriangle size={11} />
+                              Revisar
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                     {/* ACTION BUTTONS (IMPRIMIR, ALTERAR, CÓPIA/DUPLICAR, EXCLUSÃO) */}
