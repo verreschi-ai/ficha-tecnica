@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { BarChart3, Printer, AlertTriangle, CheckCircle2, TrendingUp, DollarSign, Search, ShieldAlert, Sparkles, ArrowRight } from 'lucide-react';
+import { BarChart3, Printer, AlertTriangle, CheckCircle2, TrendingUp, DollarSign, Search, ShieldAlert, Sparkles, ArrowRight, Receipt } from 'lucide-react';
 import { TechnicalSheet, AppSettings } from '../types';
+import { DreUnitariaModal } from './DreUnitariaModal';
 
 interface PricingReportTabProps {
   sheets: TechnicalSheet[];
@@ -43,6 +44,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'healthy' | 'warning' | 'danger'>('all');
+  const [dreSheetId, setDreSheetId] = useState<string | null>(null);
 
   const taxRate = Number(appSettings.defaultTaxRate) || 6;
   const targetMargin = Number(appSettings.targetReturnMargin) || 20;
@@ -355,6 +357,14 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                             <Printer size={14} />
                             <span>Ficha</span>
                           </button>
+                          <button
+                            onClick={() => setDreSheetId(sheet.id)}
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition-colors cursor-pointer text-xs flex items-center space-x-1"
+                            title="Ver DRE Unitária (conferência de preço)"
+                          >
+                            <Receipt size={14} />
+                            <span>DRE</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -365,6 +375,28 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
           </table>
         </div>
       </div>
+
+      {dreSheetId && (() => {
+        const m = allMetrics.find((metric) => metric.sheet.id === dreSheetId);
+        if (!m) return null;
+        return (
+          <DreUnitariaModal
+            sheet={m.sheet}
+            activePrice={m.activePrice}
+            costInsumo={m.costInsumo}
+            cmvPct={m.cmvPct}
+            fixedCostValue={m.fixedCostValue}
+            fixedCostPctRow={m.fixedCostPctRow}
+            variableCostValue={m.variableCostValue}
+            variableCostPct={variableCostPct}
+            taxValue={m.taxValue}
+            taxRate={taxRate}
+            profitValue={m.profitValue}
+            profitPct={m.profitPct}
+            onClose={() => setDreSheetId(null)}
+          />
+        );
+      })()}
     </div>
   );
 };
