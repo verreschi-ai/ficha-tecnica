@@ -42,8 +42,18 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Ingredients inside the recipe
+  // O que fica salvo na ficha usa grossQty/netQty/totalCost (tipo Ingredient), não "qty" —
+  // ao reabrir pra edição, precisa converter de volta pro formato que este formulário usa
+  // internamente. Sem isso, toda quantidade carregava como undefined (exibida como zerada) e
+  // o totalizador (Custo Total/CMV) somava undefined * preço = NaN, sumindo da tela.
   const [ingredients, setIngredients] = useState<Array<{ name: string; qty: number; unit: string; unitPrice: number; type: 'item' | 'recipe' }>>(
-    initialSheet?.ingredients || []
+    (initialSheet?.ingredients || []).map((ing: any) => ({
+      name: ing.name,
+      qty: ing.grossQty > 0 ? ing.grossQty : (ing.qty > 0 ? ing.qty : 0),
+      unit: ing.unit,
+      unitPrice: ing.unitPrice,
+      type: ing.type || 'item'
+    }))
   );
 
   // Selection state: First select the item/recipe name, then auto-detect type
