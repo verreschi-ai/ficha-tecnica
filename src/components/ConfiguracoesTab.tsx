@@ -13,6 +13,7 @@ interface ConfiguracoesTabProps {
   currentUser?: User | null;
   onNavigateToSubscription?: () => void;
   onResetAllData?: () => void;
+  categoriesList?: string[];
 }
 
 export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
@@ -21,7 +22,8 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
   onLogout,
   currentUser,
   onNavigateToSubscription,
-  onResetAllData
+  onResetAllData,
+  categoriesList = []
 }) => {
   const [formData, setFormData] = React.useState<AppSettings>({ ...settings, theme: settings.theme || 'light' });
   const [saved, setSaved] = React.useState(false);
@@ -54,6 +56,19 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
     }));
     setSaved(false);
   };
+
+  const handleCategoryShareChange = (category: string, pct: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      categoryRevenueShare: { ...(prev.categoryRevenueShare || {}), [category]: pct }
+    }));
+    setSaved(false);
+  };
+
+  const totalCategoryShare = categoriesList.reduce(
+    (acc, cat) => acc + (formData.categoryRevenueShare?.[cat] || 0),
+    0
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,6 +213,49 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
             </div>
           </div>
         </div>
+
+        {/* MIX DE VENDAS POR CATEGORIA (RATEIO DE CUSTO FIXO) */}
+        {categoriesList.length > 0 && (
+          <div className="pt-4 border-t border-slate-100 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center space-x-2 text-slate-900 font-bold text-sm">
+                <TrendingUp size={18} className="text-orange-600" />
+                <h4 className="uppercase tracking-wider text-xs">Mix de Vendas por Categoria</h4>
+              </div>
+              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${
+                totalCategoryShare === 0
+                  ? 'bg-slate-100 text-slate-500 border-slate-200'
+                  : Math.round(totalCategoryShare) === 100
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
+                Total: {totalCategoryShare.toFixed(1).replace('.', ',')}%
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Opcional. Informe quanto % do faturamento mensal vem de cada categoria (ex.: Marmitex 40%, Pizzas 30%...).
+              Isso estima quantos pedidos cada categoria representa usando o próprio ticket médio dela, em vez de
+              assumir que todo prato vende a mesma quantidade — evitando que pratos de ticket baixo e alto giro
+              carreguem um Custo Fixo por prato inflado demais. Deixe zerado para usar o método simples (ticket médio geral).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {categoriesList.map((cat) => (
+                <div key={cat} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-slate-700 truncate">{cat}</label>
+                  <div className="relative w-24 shrink-0">
+                    <DecimalInput
+                      value={formData.categoryRevenueShare?.[cat] || 0}
+                      onChange={(val) => handleCategoryShareChange(cat, val)}
+                      placeholder="0,0"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-orange-500 pr-6 text-right"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs pointer-events-none">%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* TEMAS VISUAIS (MODO DIA & MODO NOITE) */}
         <div className="pt-4 border-t border-slate-100 space-y-3">

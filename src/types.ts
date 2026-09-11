@@ -130,6 +130,12 @@ export interface AppSettings {
   monthlyRevenue: number; // Faturamento médio/mês (R$)
   theme?: 'light' | 'dark'; // Modo Dia / Modo Noite
   whatsappNumber?: string; // Número do WhatsApp de suporte/ativação de licenças
+  // Mix de vendas: % do faturamento mensal que vem de cada categoria (ex.: Marmitex 40%,
+  // Pizzas 30%...). Usado pra estimar quantos pedidos de cada categoria isso representa
+  // (receita da categoria ÷ ticket médio da categoria), em vez de assumir que todo prato
+  // vende a mesma quantidade — o que penalizava pratos de ticket baixo e alto giro no
+  // rateio de Custo Fixo por prato.
+  categoryRevenueShare?: Record<string, number>;
 }
 
 export interface User {

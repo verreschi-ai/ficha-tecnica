@@ -752,7 +752,39 @@ export function App() {
     ? sheets.reduce((acc, s) => acc + (s.sellingPrice > 0 ? s.sellingPrice : (s.costPerPortion > 0 ? s.costPerPortion * 3.33 : 0)), 0) / sheets.length
     : 0;
   const faturamentoMedioMensal = fixedCosts.monthlyRevenue || appSettings.monthlyRevenue || 0;
-  const volumeMensalEstimado = ticketMedioGeral > 0 ? faturamentoMedioMensal / ticketMedioGeral : 0;
+
+  // Mix de vendas por categoria (opcional): em vez de assumir que todo prato vende a mesma
+  // quantidade (ticket médio geral), usa a % de faturamento que o usuário atribui a cada
+  // categoria + o ticket médio DAQUELA categoria pra estimar quantos pedidos ela representa.
+  // Isso corrige a distorção de categorias baratas e de alto giro (ex.: Marmitex) que, pelo
+  // método antigo, pareciam vender a mesma quantidade que categorias de ticket alto e baixo
+  // giro (ex.: Pizza) — inflando artificialmente o Custo Fixo rateado nos itens baratos.
+  const categoryRevenueShare = appSettings.categoryRevenueShare || {};
+  const configuredCats = Object.keys(categoryRevenueShare).filter((c) => (categoryRevenueShare[c] || 0) > 0);
+  const totalConfiguredSharePct = configuredCats.reduce((acc, c) => acc + (categoryRevenueShare[c] || 0), 0);
+
+  let volumeMensalEstimado = 0;
+  if (totalConfiguredSharePct > 0) {
+    volumeMensalEstimado = configuredCats.reduce((acc, cat) => {
+      const catSheets = sheets.filter((s) => s.category === cat);
+      const avgTicketCat = catSheets.length > 0
+        ? catSheets.reduce((a, s) => a + (s.sellingPrice > 0 ? s.sellingPrice : (s.costPerPortion > 0 ? s.costPerPortion * 3.33 : 0)), 0) / catSheets.length
+        : 0;
+      if (avgTicketCat <= 0) return acc;
+      // Normaliza pra somar 100% entre as categorias configuradas, protegendo contra o
+      // usuário não bater exatamente 100% no total.
+      const sharePct = (categoryRevenueShare[cat] || 0) / totalConfiguredSharePct;
+      const catRevenue = faturamentoMedioMensal * sharePct;
+      return acc + (catRevenue / avgTicketCat);
+    }, 0);
+  }
+
+  // Sem mix configurado (ou nenhuma categoria configurada bateu com pratos cadastrados):
+  // cai no método antigo de ticket médio geral.
+  if (volumeMensalEstimado <= 0) {
+    volumeMensalEstimado = ticketMedioGeral > 0 ? faturamentoMedioMensal / ticketMedioGeral : 0;
+  }
+
   const custoFixoPorPratoRS = volumeMensalEstimado > 0 ? parseFloat((totalFixedCostVal / volumeMensalEstimado).toFixed(2)) : 0;
 
   // Suggested Price Formula Calculation helper
@@ -1488,6 +1520,7 @@ export function App() {
               currentUser={currentUser}
               onNavigateToSubscription={() => setActiveTab('assinatura')}
               onResetAllData={handleResetAllData}
+              categoriesList={categoriesList}
             />
           )}
 
