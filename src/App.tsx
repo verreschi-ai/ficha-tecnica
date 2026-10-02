@@ -54,7 +54,7 @@ import { IfoodPricingTab } from './components/IfoodPricingTab';
 import { NineninePricingTab } from './components/NineninePricingTab';
 import { PricingReportTab } from './components/PricingReportTab';
 import { PriceSimulatorTab } from './components/PriceSimulatorTab';
-import { fetchUserDataFromFirestore, saveUserDataToFirestore, SyncedUserData } from './services/firebaseService';
+import { fetchUserDataFromFirestore, saveUserDataToFirestore, SyncedUserData, auth as firebaseAuth } from './services/firebaseService';
 
 import {
   Printer,
@@ -949,7 +949,12 @@ export function App() {
     setSuggestions(suggestions.map((s) => (s.id === id ? { ...s, status: newStatus } : s)));
   };
 
-  const activeUserEmailRef = useRef<string | null>(currentUser?.email ? currentUser.email.trim().toLowerCase() : null);
+  // Começa null de propósito (mesmo já havendo um currentUser restaurado do localStorage
+  // na primeira renderização) -- assim o efeito abaixo SEMPRE roda pelo menos uma vez ao
+  // montar, buscando o cadastro no Firestore. Se começasse já igual ao e-mail da sessão
+  // restaurada, o efeito pularia o carregamento logo de cara (recarregar a página com a
+  // sessão já salva nunca buscaria a nuvem).
+  const activeUserEmailRef = useRef<string | null>(null);
   const exportPushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firestoreSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Só libera o auto-save (local E nuvem) depois que o carregamento assíncrono termina --
@@ -990,6 +995,16 @@ export function App() {
 
     (async () => {
       const localData = getUserDataFromStorage(cleanEmail);
+
+      // O app considera o usuário "logado" assim que acha o registro no localStorage
+      // (síncrono), mas o Firebase Auth restaura a sessão dele de forma assíncrona em
+      // segundo plano -- sem esperar isso, a primeira chamada ao Firestore sai sem
+      // autenticação ainda e é negada pelas regras de segurança.
+      try {
+        await firebaseAuth.authStateReady();
+      } catch (e) {}
+      if (cancelled) return;
+
       let cloudData: SyncedUserData | null = null;
       try {
         cloudData = await fetchUserDataFromFirestore(cleanEmail);
@@ -997,6 +1012,11 @@ export function App() {
         // Sem internet ou erro de rede: segue só com o que já tem localmente.
       }
       if (cancelled) return;
+      // Marca "pronto" ANTES de aplicar os dados (que disparam setState) -- os setState de
+      // applyData podem gerar re-renders que rodam o efeito de auto-save antes desta função
+      // terminar de executar; se a flag só virasse true no final, esse efeito ainda veria
+      // dataReadyRef como false e nunca chegaria a salvar nada.
+      dataReadyRef.current = true;
 
       if (hasRealContent(cloudData)) {
         // Nuvem tem cadastro real -- é a versão correta pra este dispositivo.
@@ -1025,8 +1045,6 @@ export function App() {
         } catch (e) {}
         applyData(defaultData);
       }
-
-      if (!cancelled) dataReadyRef.current = true;
     })();
 
     return () => {
