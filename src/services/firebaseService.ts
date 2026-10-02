@@ -133,7 +133,42 @@ export async function fetchReceitasFromFirestore(userId: string): Promise<Techni
   }
 }
 
-// 4. Listener Reativo em Tempo Real para Insumos e Receitas
+// 4. Sincronização Completa dos Dados do Usuário (fichas, insumos, custos, configurações,
+// categorias) -- um documento único por conta, espelhando o mesmo payload que antes só ia
+// pro localStorage. Isso é o que permite abrir a mesma conta em outro PC e ver o cadastro
+// real, em vez de começar vazio.
+export interface SyncedUserData {
+  sheets?: any[];
+  rawIngredients?: any[];
+  fixedCosts?: any;
+  variableCosts?: any;
+  appSettings?: any;
+  categoriesList?: string[];
+  suggestions?: any[];
+  updatedAt?: string;
+}
+
+export async function fetchUserDataFromFirestore(email: string): Promise<SyncedUserData | null> {
+  try {
+    const ref = doc(db, 'userData', email.trim().toLowerCase());
+    const snap = await getDoc(ref);
+    return snap.exists() ? (snap.data() as SyncedUserData) : null;
+  } catch (err) {
+    console.error('[Firestore Error] Falha ao buscar dados do usuário:', err);
+    return null;
+  }
+}
+
+export async function saveUserDataToFirestore(email: string, data: SyncedUserData): Promise<void> {
+  try {
+    const ref = doc(db, 'userData', email.trim().toLowerCase());
+    await setDoc(ref, { ...data, updatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Firestore Error] Falha ao salvar dados do usuário:', err);
+  }
+}
+
+// 5. Listener Reativo em Tempo Real para Insumos e Receitas
 export function subscribeToUserData(userId: string, onInsumosUpdate: (insumos: RawIngredientItem[]) => void, onReceitasUpdate: (receitas: TechnicalSheet[]) => void) {
   const qInsumos = query(collection(db, 'insumos'), where('userId', '==', userId));
   const unsubInsumos = onSnapshot(qInsumos, (snapshot) => {

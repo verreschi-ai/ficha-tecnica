@@ -91,8 +91,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     try {
       setLoading(true);
       await signInWithEmailAndPassword(auth, cleanEmail, pass);
-    } catch (authErr: any) {
-      console.warn("Firebase Auth signIn warning (falling back to local state check):", authErr);
+    } catch (signInErr: any) {
+      // Conta pode ser "legada" (criada antes de termos credenciais reais do Firebase em
+      // produção, só local) -- tenta criar a conta real agora com a mesma senha. Se já
+      // existir conta real (e-mail em uso), a falha do login acima era mesmo senha errada.
+      try {
+        await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+      } catch (createErr: any) {
+        if (createErr.code === 'auth/email-already-in-use') {
+          setErrorMsg('E-mail ou senha incorretos.');
+          setLoading(false);
+          return;
+        }
+        console.error('Firebase Auth error ao migrar conta legada:', createErr);
+      }
     } finally {
       setLoading(false);
     }

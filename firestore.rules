@@ -34,5 +34,15 @@ service cloud.firestore {
         (request.resource != null && request.resource.data.userId == request.auth.uid)
       );
     }
+
+    // 🔒 USERDATA: snapshot completo do cadastro do usuário (fichas, insumos, custos,
+    // configurações, categorias), usado pra sincronizar a mesma conta entre dispositivos.
+    // Chave do documento é o e-mail (minúsculo) -- só o dono autenticado com aquele e-mail
+    // no token pode ler/escrever o próprio documento.
+    match /userData/{email} {
+      allow read, write: if isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() == email;
+    }
   }
 }

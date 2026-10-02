@@ -54,6 +54,7 @@ import { IfoodPricingTab } from './components/IfoodPricingTab';
 import { NineninePricingTab } from './components/NineninePricingTab';
 import { PricingReportTab } from './components/PricingReportTab';
 import { PriceSimulatorTab } from './components/PriceSimulatorTab';
+import { fetchUserDataFromFirestore, saveUserDataToFirestore, SyncedUserData } from './services/firebaseService';
 
 import {
   Printer,
@@ -950,26 +951,65 @@ export function App() {
 
   const activeUserEmailRef = useRef<string | null>(currentUser?.email ? currentUser.email.trim().toLowerCase() : null);
   const exportPushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firestoreSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Só libera o auto-save (local E nuvem) depois que o carregamento assíncrono termina --
+  // sem isso, o efeito de salvamento podia disparar com dados antigos/vazios no instante
+  // entre trocar de usuário e a busca no Firestore responder, sobrescrevendo a nuvem.
+  const dataReadyRef = useRef(false);
 
-  // LOAD USER DATA ON CURRENT USER CHANGE (INDETERNIMATE PERMANENT STORAGE LINKED TO EMAIL)
+  const hasRealContent = (d: any) =>
+    !!d && (((d.sheets && d.sheets.length > 0)) || (d.rawIngredients && d.rawIngredients.length > 0));
+
+  // LOAD USER DATA ON CURRENT USER CHANGE -- Firestore é a fonte de verdade entre
+  // dispositivos; localStorage fica como cache local e fallback offline. Uma nuvem vazia
+  // (ex.: primeiro acesso de outro PC) nunca sobrescreve dados locais reais -- nesse caso,
+  // o dado local é que sobe pra nuvem, não o contrário.
   React.useEffect(() => {
     if (!currentUser?.email) {
       activeUserEmailRef.current = null;
+      dataReadyRef.current = false;
       return;
     }
 
     const cleanEmail = currentUser.email.trim().toLowerCase();
+    if (activeUserEmailRef.current === cleanEmail) return;
+    activeUserEmailRef.current = cleanEmail;
+    dataReadyRef.current = false;
 
-    if (activeUserEmailRef.current !== cleanEmail) {
-      const userData = getUserDataFromStorage(cleanEmail);
-      if (userData) {
-        if (userData.sheets) setSheets(userData.sheets);
-        if (userData.rawIngredients) setRawIngredients(userData.rawIngredients);
-        if (userData.fixedCosts) setFixedCosts(userData.fixedCosts);
-        if (userData.variableCosts) setVariableCosts(userData.variableCosts);
-        if (userData.appSettings) setAppSettings(userData.appSettings);
-        if (userData.categoriesList) setCategoriesList(userData.categoriesList);
-        if (userData.suggestions) setSuggestions(userData.suggestions);
+    let cancelled = false;
+
+    const applyData = (resolved: any) => {
+      if (resolved.sheets) setSheets(resolved.sheets);
+      if (resolved.rawIngredients) setRawIngredients(resolved.rawIngredients);
+      if (resolved.fixedCosts) setFixedCosts(resolved.fixedCosts);
+      if (resolved.variableCosts) setVariableCosts(resolved.variableCosts);
+      if (resolved.appSettings) setAppSettings(resolved.appSettings);
+      if (resolved.categoriesList) setCategoriesList(resolved.categoriesList);
+      if (resolved.suggestions) setSuggestions(resolved.suggestions);
+    };
+
+    (async () => {
+      const localData = getUserDataFromStorage(cleanEmail);
+      let cloudData: SyncedUserData | null = null;
+      try {
+        cloudData = await fetchUserDataFromFirestore(cleanEmail);
+      } catch (e) {
+        // Sem internet ou erro de rede: segue só com o que já tem localmente.
+      }
+      if (cancelled) return;
+
+      if (hasRealContent(cloudData)) {
+        // Nuvem tem cadastro real -- é a versão correta pra este dispositivo.
+        applyData(cloudData);
+        try {
+          localStorage.setItem(`basechef_data_${cleanEmail}`, JSON.stringify(cloudData));
+        } catch (e) {}
+      } else if (hasRealContent(localData)) {
+        // Nuvem vazia/sem documento ainda, mas este dispositivo tem cadastro real --
+        // provavelmente o primeiro sync depois de ligar essa função, ou o dispositivo
+        // "principal". Usa o local e sobe ele pra nuvem.
+        applyData(localData);
+        saveUserDataToFirestore(cleanEmail, localData).catch(() => {});
       } else {
         const defaultData = {
           sheets: INITIAL_SHEETS,
@@ -983,24 +1023,26 @@ export function App() {
         try {
           localStorage.setItem(`basechef_data_${cleanEmail}`, JSON.stringify(defaultData));
         } catch (e) {}
-        setSheets(INITIAL_SHEETS);
-        setRawIngredients(INITIAL_RAW_INGREDIENTS);
-        setFixedCosts(INITIAL_FIXED_COSTS);
-        setVariableCosts(INITIAL_VARIABLE_COSTS);
-        setAppSettings(INITIAL_SETTINGS);
-        setCategoriesList(['Pizzas', 'Pratos Principais', 'Entradas', 'Sobremesas', 'Bebidas']);
-        setSuggestions(INITIAL_SUGGESTIONS);
+        applyData(defaultData);
       }
-      activeUserEmailRef.current = cleanEmail;
-    }
+
+      if (!cancelled) dataReadyRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser]);
 
-  // AUTO-SAVE USER DATA CONTINUOUSLY INDEFINITELY TO LOCALSTORAGE LINKED TO USER EMAIL
+  // AUTO-SAVE USER DATA CONTINUOUSLY INDEFINITELY TO LOCALSTORAGE + FIRESTORE LINKED TO USER EMAIL
   React.useEffect(() => {
     if (!currentUser?.email) return;
     const cleanEmail = currentUser.email.trim().toLowerCase();
 
     if (activeUserEmailRef.current !== cleanEmail) return;
+    // Espera o carregamento inicial (local + nuvem) terminar antes de começar a salvar --
+    // evita sobrescrever a nuvem com um estado transitório/vazio no meio da troca de usuário.
+    if (!dataReadyRef.current) return;
 
     const payload = {
       sheets,
@@ -1017,6 +1059,13 @@ export function App() {
     } catch (e) {
       console.error('Error saving user data:', e);
     }
+
+    // Sincroniza (com debounce) o mesmo snapshot completo com o Firestore, pra qualquer
+    // outro dispositivo logado nesta conta enxergar o cadastro atualizado.
+    if (firestoreSyncTimerRef.current) clearTimeout(firestoreSyncTimerRef.current);
+    firestoreSyncTimerRef.current = setTimeout(() => {
+      saveUserDataToFirestore(cleanEmail, payload).catch(() => {});
+    }, 1500);
 
     // Envia (com debounce) o snapshot atual de fichas técnicas/insumos/custos/colaboradores
     // pro backend, que guarda em memória pra servir o painel de marketing (GRE Marketing) —
