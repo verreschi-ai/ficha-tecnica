@@ -17,4 +17,4 @@ jobs:
     steps:
       - name: Ping /api/health
         continue-on-error: true
-        run: curl -fsS --max-time 60 https://ficha-tecnica-don-giovanni.onrender.com/api/health
+        run: curl -fsS --max-time 60 https://ficha-tecnica-r1ot.onrender.com/api/health
