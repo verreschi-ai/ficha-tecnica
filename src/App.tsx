@@ -55,6 +55,7 @@ import { NineninePricingTab } from './components/NineninePricingTab';
 import { PricingReportTab } from './components/PricingReportTab';
 import { PriceSimulatorTab } from './components/PriceSimulatorTab';
 import { fetchUserDataFromFirestore, saveUserDataToFirestore, SyncedUserData, auth as firebaseAuth } from './services/firebaseService';
+import { restoreLocalPhotos } from './utils/cloudSync';
 
 import {
   Printer,
@@ -85,6 +86,24 @@ import {
   X,
   LogOut
 } from 'lucide-react';
+
+// Marca que este aparelho tem edições que ainda não chegaram à nuvem (envio pendente ou
+// falhou). No próximo login, o cadastro local prevalece sobre o da nuvem -- senão uma cópia
+// antiga da nuvem sobrescreveria o que foi editado enquanto a sincronização estava fora.
+const dirtyKey = (email: string) => `basechef_dirty_${email}`;
+const setLocalDirty = (email: string, dirty: boolean) => {
+  try {
+    if (dirty) localStorage.setItem(dirtyKey(email), '1');
+    else localStorage.removeItem(dirtyKey(email));
+  } catch (e) {}
+};
+const isLocalDirty = (email: string) => {
+  try {
+    return localStorage.getItem(dirtyKey(email)) === '1';
+  } catch (e) {
+    return false;
+  }
+};
 
 // Helper to get user data linked to email with robust non-zero sanitization
 const getUserDataFromStorage = (email?: string) => {
@@ -1024,20 +1043,25 @@ export function App() {
       // dataReadyRef como false e nunca chegaria a salvar nada.
       dataReadyRef.current = true;
 
-      if (hasRealContent(cloudData)) {
+      const preferLocal = hasRealContent(localData) && isLocalDirty(cleanEmail);
+
+      if (hasRealContent(cloudData) && !preferLocal) {
         // Nuvem tem cadastro real -- é a versão correta pra este dispositivo.
-        applyData(cloudData);
+        // A cópia da nuvem não tem fotos; mantém as fotos que já estão neste aparelho.
+        const merged = restoreLocalPhotos(cloudData as SyncedUserData, localData);
+        applyData(merged);
         try {
-          localStorage.setItem(`basechef_data_${cleanEmail}`, JSON.stringify(cloudData));
+          localStorage.setItem(`basechef_data_${cleanEmail}`, JSON.stringify(merged));
         } catch (e) {}
       } else if (hasRealContent(localData)) {
         // Nuvem vazia/sem documento ainda, mas este dispositivo tem cadastro real --
         // provavelmente o primeiro sync depois de ligar essa função, ou o dispositivo
         // "principal". Usa o local e sobe ele pra nuvem.
+        // (Também é o caso de edições locais ainda não enviadas: o local prevalece.)
         applyData(localData);
         saveUserDataToFirestore(cleanEmail, localData)
-          .then(() => setSyncError(false))
-          .catch(() => setSyncError(true));
+          .then(() => { setLocalDirty(cleanEmail, false); setSyncError(false); })
+          .catch(() => { setLocalDirty(cleanEmail, true); setSyncError(true); });
       } else {
         const defaultData = {
           sheets: INITIAL_SHEETS,
@@ -1089,9 +1113,10 @@ export function App() {
     // Sincroniza (com debounce) o mesmo snapshot completo com o Firestore, pra qualquer
     // outro dispositivo logado nesta conta enxergar o cadastro atualizado.
     if (firestoreSyncTimerRef.current) clearTimeout(firestoreSyncTimerRef.current);
+    setLocalDirty(cleanEmail, true);
     firestoreSyncTimerRef.current = setTimeout(() => {
       saveUserDataToFirestore(cleanEmail, payload)
-        .then(() => setSyncError(false))
+        .then(() => { setLocalDirty(cleanEmail, false); setSyncError(false); })
         .catch(() => setSyncError(true));
     }, 1500);
 

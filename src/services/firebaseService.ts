@@ -23,6 +23,7 @@ import {
   reauthenticateWithCredential 
 } from 'firebase/auth';
 import { TechnicalSheet, RawIngredientItem, User } from '../types';
+import { stripPhotos } from '../utils/cloudSync';
 
 // Firebase configuration using environment variables or safe defaults
 const env = (import.meta as any).env || {};
@@ -170,7 +171,8 @@ export async function saveUserDataToFirestore(email: string, data: SyncedUserDat
     const ref = doc(db, 'userData', email.trim().toLowerCase());
     // Guardado como texto JSON: o Firestore recusa listas dentro de listas e valores
     // undefined, e o cadastro real (importações, edições antigas) pode ter qualquer formato.
-    await setDoc(ref, { json: JSON.stringify(data), updatedAt: new Date().toISOString() });
+    // Sem as fotos (data URLs): com elas o cadastro passa do limite de 1 MB do documento.
+    await setDoc(ref, { json: JSON.stringify(stripPhotos(data)), updatedAt: new Date().toISOString() });
   } catch (err) {
     console.error('[Firestore Error] Falha ao salvar dados do usuário:', err);
     throw err;
