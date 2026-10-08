@@ -961,6 +961,9 @@ export function App() {
   // sem isso, o efeito de salvamento podia disparar com dados antigos/vazios no instante
   // entre trocar de usuário e a busca no Firestore responder, sobrescrevendo a nuvem.
   const dataReadyRef = useRef(false);
+  // true quando a última tentativa de falar com a nuvem falhou -- mostra um aviso fixo
+  // pra falha de sincronização nunca ficar silenciosa.
+  const [syncError, setSyncError] = useState(false);
 
   const hasRealContent = (d: any) =>
     !!d && (((d.sheets && d.sheets.length > 0)) || (d.rawIngredients && d.rawIngredients.length > 0));
@@ -1008,8 +1011,11 @@ export function App() {
       let cloudData: SyncedUserData | null = null;
       try {
         cloudData = await fetchUserDataFromFirestore(cleanEmail);
+        setSyncError(false);
       } catch (e) {
-        // Sem internet ou erro de rede: segue só com o que já tem localmente.
+        // Sem internet, sem sessão no Firebase ou regra de segurança negando: segue só
+        // com o que já tem localmente, mas avisa o usuário.
+        setSyncError(true);
       }
       if (cancelled) return;
       // Marca "pronto" ANTES de aplicar os dados (que disparam setState) -- os setState de
@@ -1029,7 +1035,9 @@ export function App() {
         // provavelmente o primeiro sync depois de ligar essa função, ou o dispositivo
         // "principal". Usa o local e sobe ele pra nuvem.
         applyData(localData);
-        saveUserDataToFirestore(cleanEmail, localData).catch(() => {});
+        saveUserDataToFirestore(cleanEmail, localData)
+          .then(() => setSyncError(false))
+          .catch(() => setSyncError(true));
       } else {
         const defaultData = {
           sheets: INITIAL_SHEETS,
@@ -1082,7 +1090,9 @@ export function App() {
     // outro dispositivo logado nesta conta enxergar o cadastro atualizado.
     if (firestoreSyncTimerRef.current) clearTimeout(firestoreSyncTimerRef.current);
     firestoreSyncTimerRef.current = setTimeout(() => {
-      saveUserDataToFirestore(cleanEmail, payload).catch(() => {});
+      saveUserDataToFirestore(cleanEmail, payload)
+        .then(() => setSyncError(false))
+        .catch(() => setSyncError(true));
     }, 1500);
 
     // Envia (com debounce) o snapshot atual de fichas técnicas/insumos/custos/colaboradores
@@ -1265,8 +1275,18 @@ export function App() {
       <div className="lg:pl-64">
         <main className="max-w-[1600px] mx-auto px-4 sm:px-8 pt-6 space-y-6">
 
-
-
+          {syncError && (
+            <div role="alert" className="bg-red-50 border border-red-300 text-red-900 p-4 rounded-2xl flex items-start space-x-3 text-xs">
+              <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">Seu cadastro não está sendo salvo na nuvem.</p>
+                <p>
+                  Ele continua salvo neste aparelho, mas não vai aparecer em outro computador até a sincronização voltar.
+                  Clique em <strong>Sair</strong> e entre de novo; se o aviso continuar, avise o suporte.
+                </p>
+              </div>
+            </div>
+          )}
 
 
           {/* TAB 0: PAINEL PRINCIPAL (DASHBOARD) */}

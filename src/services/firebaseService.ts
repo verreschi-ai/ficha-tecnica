@@ -159,7 +159,9 @@ export async function fetchUserDataFromFirestore(email: string): Promise<SyncedU
     return raw as SyncedUserData;
   } catch (err) {
     console.error('[Firestore Error] Falha ao buscar dados do usuário:', err);
-    return null;
+    // Propaga: quem chama precisa distinguir "conta sem cadastro na nuvem" (null) de
+    // "não consegui falar com a nuvem" (erro), pra avisar o usuário em vez de ficar mudo.
+    throw err;
   }
 }
 
@@ -171,6 +173,7 @@ export async function saveUserDataToFirestore(email: string, data: SyncedUserDat
     await setDoc(ref, { json: JSON.stringify(data), updatedAt: new Date().toISOString() });
   } catch (err) {
     console.error('[Firestore Error] Falha ao salvar dados do usuário:', err);
+    throw err;
   }
 }
 
