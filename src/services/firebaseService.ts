@@ -152,7 +152,11 @@ export async function fetchUserDataFromFirestore(email: string): Promise<SyncedU
   try {
     const ref = doc(db, 'userData', email.trim().toLowerCase());
     const snap = await getDoc(ref);
-    return snap.exists() ? (snap.data() as SyncedUserData) : null;
+    if (!snap.exists()) return null;
+    const raw = snap.data() as any;
+    // O cadastro é guardado como um texto JSON único (ver saveUserDataToFirestore).
+    if (typeof raw.json === 'string') return JSON.parse(raw.json) as SyncedUserData;
+    return raw as SyncedUserData;
   } catch (err) {
     console.error('[Firestore Error] Falha ao buscar dados do usuário:', err);
     return null;
@@ -162,7 +166,9 @@ export async function fetchUserDataFromFirestore(email: string): Promise<SyncedU
 export async function saveUserDataToFirestore(email: string, data: SyncedUserData): Promise<void> {
   try {
     const ref = doc(db, 'userData', email.trim().toLowerCase());
-    await setDoc(ref, { ...data, updatedAt: new Date().toISOString() });
+    // Guardado como texto JSON: o Firestore recusa listas dentro de listas e valores
+    // undefined, e o cadastro real (importações, edições antigas) pode ter qualquer formato.
+    await setDoc(ref, { json: JSON.stringify(data), updatedAt: new Date().toISOString() });
   } catch (err) {
     console.error('[Firestore Error] Falha ao salvar dados do usuário:', err);
   }
