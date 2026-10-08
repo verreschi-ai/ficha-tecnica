@@ -457,7 +457,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
           currency_id: "BRL"
         },
         status: "authorized",
-        back_url: "https://margem.basechef.com.br"
+        back_url: "https://fichatecnica.dongiovannivr.com.br"
       };
 
       console.log("Processing Mercado Pago monthly subscription request:", {
