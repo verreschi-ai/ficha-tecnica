@@ -69,7 +69,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    if (cleanEmail === 'gverreschi@hotmail.com') {
+    const isMasterAdmin = cleanEmail === 'gverreschi@hotmail.com';
+    let firebaseOk = false;
+
+    try {
+      setLoading(true);
+      await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      firebaseOk = true;
+    } catch (signInErr: any) {
+      // Conta pode ser "legada" (criada antes de termos credenciais reais do Firebase em
+      // produção, só local) -- tenta criar a conta real agora com a mesma senha. Se já
+      // existir conta real (e-mail em uso), a falha do login acima era mesmo senha errada.
+      try {
+        await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        firebaseOk = true;
+      } catch (createErr: any) {
+        if (createErr.code === 'auth/email-already-in-use') {
+          setErrorMsg('E-mail ou senha incorretos.');
+          setLoading(false);
+          return;
+        }
+        console.error('Firebase Auth error ao migrar conta legada:', createErr);
+      }
+    } finally {
+      setLoading(false);
+    }
+
+    // Conta mestre (admin) pula a cobrança da assinatura, então nunca entra sem o Firebase
+    // ter validado a senha -- antes entrava direto com qualquer senha, e sem login no
+    // Firebase o cadastro dela também não sincronizava com a nuvem.
+    if (isMasterAdmin) {
+      if (!firebaseOk) {
+        setErrorMsg('Não foi possível validar o acesso administrativo. Confira a senha (mínimo de 6 caracteres) e tente novamente.');
+        return;
+      }
       setSuccessMsg('Acesso Administrativo Mestre reconhecido. Entrando...');
       setTimeout(() => {
         onLogin({
@@ -86,27 +119,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         });
       }, 400);
       return;
-    }
-
-    try {
-      setLoading(true);
-      await signInWithEmailAndPassword(auth, cleanEmail, pass);
-    } catch (signInErr: any) {
-      // Conta pode ser "legada" (criada antes de termos credenciais reais do Firebase em
-      // produção, só local) -- tenta criar a conta real agora com a mesma senha. Se já
-      // existir conta real (e-mail em uso), a falha do login acima era mesmo senha errada.
-      try {
-        await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-      } catch (createErr: any) {
-        if (createErr.code === 'auth/email-already-in-use') {
-          setErrorMsg('E-mail ou senha incorretos.');
-          setLoading(false);
-          return;
-        }
-        console.error('Firebase Auth error ao migrar conta legada:', createErr);
-      }
-    } finally {
-      setLoading(false);
     }
 
     const existingUser = usersList.find((u) => u.email.trim().toLowerCase() === cleanEmail);
@@ -175,21 +187,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
 
     if (cleanEmail === 'gverreschi@hotmail.com') {
-      setSuccessMsg('Acesso Administrativo Mestre liberado!');
-      setTimeout(() => {
-        onLogin({
-          id: 'admin-master',
-          name: regName.trim() || 'Gabriel Verreschi (Admin)',
-          email: 'gverreschi@hotmail.com',
-          restaurantName: regRestaurant.trim() || 'Matriz Principal',
-          phone: regPhone.trim() || '(11) 99999-8888',
-          role: 'admin',
-          licenseType: 'monthly',
-          status_assinatura: 'ativo',
-          createdAt: new Date().toISOString(),
-          data_inicio: Date.now()
-        });
-      }, 400);
+      setErrorMsg('Este e-mail é de acesso administrativo. Use a aba "Já tenho conta" para entrar.');
       return;
     }
 
