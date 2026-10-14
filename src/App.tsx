@@ -1585,8 +1585,6 @@ export function App() {
               currentUser={currentUser}
               onNavigateToSubscription={() => setActiveTab('assinatura')}
               onResetAllData={handleResetAllData}
-              categoriesList={categoriesList}
-              onAddCategory={handleAddCategory}
             />
           )}
 

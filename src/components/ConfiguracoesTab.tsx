@@ -13,8 +13,6 @@ interface ConfiguracoesTabProps {
   currentUser?: User | null;
   onNavigateToSubscription?: () => void;
   onResetAllData?: () => void;
-  categoriesList?: string[];
-  onAddCategory?: (cat: string) => void;
 }
 
 export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
@@ -23,11 +21,8 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
   onLogout,
   currentUser,
   onNavigateToSubscription,
-  onResetAllData,
-  categoriesList = [],
-  onAddCategory
+  onResetAllData
 }) => {
-  const [newSegmentName, setNewSegmentName] = useState('');
   const [formData, setFormData] = React.useState<AppSettings>({ ...settings, theme: settings.theme || 'light' });
   const [saved, setSaved] = React.useState(false);
   const [showCancelModal, setShowCancelModal] = React.useState(false);
@@ -58,26 +53,6 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
       [field]: val
     }));
     setSaved(false);
-  };
-
-  const handleCategoryShareChange = (category: string, pct: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      categoryRevenueShare: { ...(prev.categoryRevenueShare || {}), [category]: pct }
-    }));
-    setSaved(false);
-  };
-
-  const totalCategoryShare = categoriesList.reduce(
-    (acc, cat) => acc + (formData.categoryRevenueShare?.[cat] || 0),
-    0
-  );
-
-  const handleAddSegment = () => {
-    const formatted = newSegmentName.trim();
-    if (!formatted || categoriesList.includes(formatted)) return;
-    if (onAddCategory) onAddCategory(formatted);
-    setNewSegmentName('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -222,75 +197,6 @@ export const ConfiguracoesTab: React.FC<ConfiguracoesTabProps> = ({
               />
             </div>
           </div>
-        </div>
-
-        {/* MIX DE VENDAS POR CATEGORIA (RATEIO DE CUSTO FIXO) */}
-        <div className="pt-4 border-t border-slate-100 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center space-x-2 text-slate-900 font-bold text-sm">
-                <TrendingUp size={18} className="text-orange-600" />
-                <h4 className="uppercase tracking-wider text-xs">Mix de Vendas por Categoria</h4>
-              </div>
-              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${
-                totalCategoryShare === 0
-                  ? 'bg-slate-100 text-slate-500 border-slate-200'
-                  : Math.round(totalCategoryShare) === 100
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
-              }`}>
-                Total: {totalCategoryShare.toFixed(1).replace('.', ',')}%
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              Opcional. Informe quanto % do faturamento mensal vem de cada categoria (ex.: Marmitex 40%, Pizzas 30%...).
-              Isso estima quantos pedidos cada categoria representa usando o próprio ticket médio dela, em vez de
-              assumir que todo prato vende a mesma quantidade — evitando que pratos de ticket baixo e alto giro
-              carreguem um Custo Fixo por prato inflado demais. Deixe zerado para usar o método simples (ticket médio geral).
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {categoriesList.map((cat) => {
-                const pct = formData.categoryRevenueShare?.[cat] || 0;
-                const revenueValue = ((formData.monthlyRevenue || 0) * pct) / 100;
-                return (
-                  <div key={cat} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-bold text-slate-700 truncate">{cat}</label>
-                      <div className="relative w-24 shrink-0">
-                        <DecimalInput
-                          value={pct}
-                          onChange={(val) => handleCategoryShareChange(cat, val)}
-                          placeholder="0,0"
-                          className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-orange-500 pr-6 text-right"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs pointer-events-none">%</span>
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-slate-500 text-right font-mono">
-                      ≈ R$ {revenueValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /mês
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ADICIONAR NOVO SEGMENTO/CATEGORIA */}
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="text"
-                value={newSegmentName}
-                onChange={(e) => setNewSegmentName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddSegment(); } }}
-                placeholder="Novo segmento (ex.: Lanches, Pizza Frita...)"
-                className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-orange-500"
-              />
-              <button
-                type="button"
-                onClick={handleAddSegment}
-                className="px-3 py-2 bg-[#38261E] hover:bg-[#201511] text-white font-bold rounded-xl transition-colors cursor-pointer text-xs whitespace-nowrap"
-              >
-                + Adicionar Segmento
-              </button>
-            </div>
         </div>
 
         {/* TEMAS VISUAIS (MODO DIA & MODO NOITE) */}
