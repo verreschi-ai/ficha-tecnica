@@ -4,7 +4,7 @@ import { Store, Search, Printer, Calculator, Info, Gift, Tag, Flame } from 'luci
 
 interface PDVLojaTabProps {
   sheets: TechnicalSheet[];
-  custoFixoPorPratoRS: number;
+  fixedCostPct: number;
   variableCostPct: number;
   appSettings: AppSettings;
   calculateSuggestedPrice: (costInsumo: number) => number;
@@ -12,7 +12,7 @@ interface PDVLojaTabProps {
 
 export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
   sheets,
-  custoFixoPorPratoRS,
+  fixedCostPct,
   variableCostPct,
   appSettings,
   calculateSuggestedPrice,
@@ -41,7 +41,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
       const costInsumo = Number(sheet.costPerPortion) || 0;
       const sellPrice = Number(sheet.sellingPrice) || 0;
 
-      // Preço-base (sem promoção): CMV + Custo Fixo rateado + Impostos + Custo Variável + Margem.
+      // Preço-base (sem promoção): CMV + Custo Fixo (% do faturamento) + Impostos + Custo Variável + Margem.
       const basePrice = calculateSuggestedPrice(costInsumo);
 
       // Preço sugerido COM as promoções ativas: a Taxa Grátis (R$ que a loja absorve) soma-se
@@ -54,7 +54,8 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
       const activePrice = sellPrice > 0 ? sellPrice : suggestedPrice;
 
       const cmvPct = activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : 0;
-      const fixedPct = activePrice > 0 ? Number(((custoFixoPorPratoRS / activePrice) * 100).toFixed(1)) : 0;
+      const fixedPct = activePrice > 0 ? fixedCostPct : 0;
+      const fixedValue = Number(((activePrice * fixedPct) / 100).toFixed(2));
       const profitPct = activePrice > 0 ? Number((100 - (cmvPct + fixedPct + variableCostPct + taxRate)).toFixed(1)) : 0;
 
       let status: 'healthy' | 'warning' | 'danger' = 'healthy';
@@ -63,9 +64,9 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
 
       const hasPromo = enableFreeFee || enableDiscount;
 
-      return { sheet, costInsumo, sellPrice, basePrice, suggestedPrice, activePrice, cmvPct, fixedPct, profitPct, status, hasPromo };
+      return { sheet, costInsumo, sellPrice, basePrice, suggestedPrice, activePrice, cmvPct, fixedPct, fixedValue, profitPct, status, hasPromo };
     });
-  }, [sheets, custoFixoPorPratoRS, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice, enableFreeFee, freeFeeValue, enableDiscount, discountPct]);
+  }, [sheets, fixedCostPct, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice, enableFreeFee, freeFeeValue, enableDiscount, discountPct]);
 
   const filtered = metrics.filter(m =>
     m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -90,7 +91,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
         <head><title>Relatório de Preços PDV/Balcão - Base Chef</title></head>
         <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
           <h2 style="color: #1A1513; margin-bottom: 5px;">Relatório de Preços PDV / Balcão 🏪</h2>
-          <p style="font-size: 12px; color: #666; margin-bottom: 20px;">Sem comissão de plataforma. Impostos: ${taxRate}% | Custo Variável: ${variableCostPct}% | Custo Fixo/prato: R$ ${custoFixoPorPratoRS.toFixed(2).replace('.', ',')} | Margem Meta: ${targetMargin}%</p>
+          <p style="font-size: 12px; color: #666; margin-bottom: 20px;">Sem comissão de plataforma. Impostos: ${taxRate}% | Custo Variável: ${variableCostPct}% | Custo Fixo: ${fixedCostPct}% | Margem Meta: ${targetMargin}%</p>
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead><tr style="background: #f8fafc; border-bottom: 2px solid #cbd5e1;"><th style="padding: 10px; text-align: left;">Produto / Prato</th><th style="padding: 10px; text-align: right;">Custo Ficha</th><th style="padding: 10px; text-align: right;">Preço Sugerido PDV</th><th style="padding: 10px; text-align: right;">Preço Praticado</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -137,7 +138,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs text-blue-900">
         <Info size={16} className="text-blue-600 shrink-0 mt-0.5" />
         <span>
-          Este preço já inclui <strong>CMV + Custo Fixo rateado (R$ {custoFixoPorPratoRS.toFixed(2).replace('.', ',')}/prato) + Impostos ({taxRate}%) + Custo Variável do PDV ({variableCostPct}%) + Margem Meta ({targetMargin}%)</strong> — é o mesmo motor de cálculo do Relatório de Precificação. iFood e 99Food partem deste valor e somam a comissão da plataforma por cima.
+          Este preço já inclui <strong>CMV + Custo Fixo ({fixedCostPct}% do faturamento) + Impostos ({taxRate}%) + Custo Variável do PDV ({variableCostPct}%) + Margem Meta ({targetMargin}%)</strong> — é o mesmo motor de cálculo do Relatório de Precificação. iFood e 99Food partem deste valor e somam a comissão da plataforma por cima.
         </span>
       </div>
 
@@ -279,7 +280,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
                       <div className="text-[10px] text-slate-400">{m.cmvPct.toFixed(1)}%</div>
                     </td>
                     <td className="py-4 px-4 text-right font-mono">
-                      <div className="font-bold text-slate-800">{formatCurrency(custoFixoPorPratoRS)}</div>
+                      <div className="font-bold text-slate-800">{formatCurrency(m.fixedValue)}</div>
                       <div className="text-[10px] text-slate-400">{m.fixedPct.toFixed(1)}%</div>
                     </td>
                     <td className="py-4 px-4 text-center">

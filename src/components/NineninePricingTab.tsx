@@ -5,12 +5,12 @@ import { NineNineLogo } from './NineNineLogo';
 
 interface NineninePricingTabProps {
   sheets: TechnicalSheet[];
-  custoFixoPorPratoRS: number;
+  fixedCostPct: number;
   appSettings: AppSettings;
   calculateSuggestedPrice: (costInsumo: number) => number;
 }
 
-export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, custoFixoPorPratoRS, appSettings, calculateSuggestedPrice }) => {
+export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, fixedCostPct, appSettings, calculateSuggestedPrice }) => {
   const taxRate = Number(appSettings.defaultTaxRate) || 6;
   // Logistics Plan state
   const [logisticsPlan, setLogisticsPlan] = useState<'store' | 'platform'>('store');
@@ -482,12 +482,14 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, 
 
                   // Net revenue received by restaurant after 99Food's own fees and campaigns:
                   const netReceived = ninenineSuggestedPrice * (1 - (totalTaxPercent / 100) - (totalCampaignPct / 100)) - logisticsFeeAddon;
-                  // Margem de verdade: também desconta Custo Fixo (rateio real por prato) e os
+                  // Margem de verdade: também desconta Custo Fixo (a mesma % do faturamento, sobre o preço de
+                  // balcão do prato — o custo fixo dele não muda por vender pelo app) e os
                   // Impostos do PRÓPRIO restaurante (Simples Nacional etc.) — esses continuam
                   // devidos independente do canal de venda, e antes não entravam nessa conta.
+                  const fixedCostRS = (basePrice * fixedCostPct) / 100;
                   const taxValueAtNineninePrice = (ninenineSuggestedPrice * taxRate) / 100;
                   const netMarginPercent = ninenineSuggestedPrice > 0
-                    ? ((netReceived - sheet.costPerPortion - custoFixoPorPratoRS - taxValueAtNineninePrice) / ninenineSuggestedPrice) * 100
+                    ? ((netReceived - sheet.costPerPortion - fixedCostRS - taxValueAtNineninePrice) / ninenineSuggestedPrice) * 100
                     : sheet.margin;
 
                   return (

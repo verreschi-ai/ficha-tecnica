@@ -6,7 +6,8 @@ import { DreUnitariaModal } from './DreUnitariaModal';
 interface PricingReportTabProps {
   sheets: TechnicalSheet[];
   fixedCostPct: number;
-  custoFixoPorPratoRS: number;
+  pricingStructureOverloaded: boolean;
+  percentDeductionsTotal: number;
   variableCostPct: number;
   appSettings: AppSettings;
   calculateSuggestedPrice: (costInsumo: number) => number;
@@ -35,7 +36,8 @@ interface SheetMetrics {
 export const PricingReportTab: React.FC<PricingReportTabProps> = ({
   sheets,
   fixedCostPct,
-  custoFixoPorPratoRS,
+  pricingStructureOverloaded,
+  percentDeductionsTotal,
   variableCostPct,
   appSettings,
   calculateSuggestedPrice,
@@ -62,10 +64,10 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
         ? sheet.cmv
         : (activePrice > 0 ? Number(((costInsumo / activePrice) * 100).toFixed(1)) : (costInsumo === 0 ? 0 : 100));
 
-      // Custo Fixo é um valor fixo em R$ por prato (rateado pelo Ticket Médio, não mais um %
-      // igual pra todos) — aqui só convertemos de volta pra % relativo a ESTE prato específico.
-      const fixedCostValue = custoFixoPorPratoRS;
-      const fixedCostPctRow = activePrice > 0 ? Number(((fixedCostValue / activePrice) * 100).toFixed(1)) : 0;
+      // Custo Fixo é a mesma % do preço em todo prato (Custo Fixo Total ÷ Faturamento), como
+      // Impostos e Custo Variável — o valor em R$ acompanha o preço de cada prato.
+      const fixedCostPctRow = activePrice > 0 ? fixedCostPct : 0;
+      const fixedCostValue = Number(((activePrice * fixedCostPctRow) / 100).toFixed(2));
 
       const totalDeductions = cmvPct + fixedCostPctRow + variableCostPct + taxRate;
       const profitPct = activePrice > 0 ? Number((100 - totalDeductions).toFixed(1)) : 0;
@@ -77,10 +79,10 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
       const targetMarginValue = Number(((activePrice * targetMargin) / 100).toFixed(2));
       const profitValue = Number(((activePrice * profitPct) / 100).toFixed(2));
 
-      // Preço com Todos os Custos: quanto o prato custa de verdade (insumo + fatia de custo
-      // fixo + variável + imposto) ANTES de qualquer margem — o "preço de equilíbrio" (lucro
-      // zero) desse prato ao preço praticado atual.
-      const totalCostPrice = Number((costInsumo + fixedCostValue + variableCostValue + taxValue).toFixed(2));
+      // Preço com Todos os Custos: o preço de equilíbrio (lucro zero) do prato — abaixo dele a
+      // venda dá prejuízo. Insumo ÷ (1 − Custo Fixo − Variável − Impostos), sem margem.
+      const breakEvenDivisor = 1 - (fixedCostPct + variableCostPct + taxRate) / 100;
+      const totalCostPrice = breakEvenDivisor > 0 ? Number((costInsumo / breakEvenDivisor).toFixed(2)) : 0;
 
       let status: SheetMetrics['status'] = 'healthy';
       if (profitPct < 10) status = 'danger';
@@ -92,7 +94,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
         totalCostPrice, profitPct, profitValue, status
       };
     });
-  }, [sheets, custoFixoPorPratoRS, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
+  }, [sheets, fixedCostPct, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice]);
 
   const healthyCount = allMetrics.filter(m => m.status === 'healthy').length;
   const warningCount = allMetrics.filter(m => m.status === 'warning').length;
@@ -128,7 +130,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
             </div>
           </div>
           <p className="text-xs text-slate-500 max-w-2xl pt-1">
-            Compara o preço praticado com o <strong>Preço Sugerido</strong> considerando Custo dos Itens, Impostos ({appSettings.defaultTaxRate}%), Custos Variáveis ({variableCostPct}%), Custo Fixo (R$ {custoFixoPorPratoRS.toFixed(2).replace('.', ',')} por prato, rateado pelo Ticket Médio) e Margem Desejada ({appSettings.targetReturnMargin}%).
+            Compara o preço praticado com o <strong>Preço Sugerido</strong> considerando Custo dos Itens, Impostos ({appSettings.defaultTaxRate}%), Custos Variáveis ({variableCostPct}%), Custo Fixo ({fixedCostPct}% do faturamento) e Margem Desejada ({appSettings.targetReturnMargin}%).
           </p>
         </div>
 
@@ -140,6 +142,19 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
           <span>Imprimir Relatório</span>
         </button>
       </div>
+
+      {pricingStructureOverloaded && (
+        <div role="alert" className="bg-red-50 border border-red-300 text-red-900 p-4 rounded-2xl flex items-start space-x-3 text-xs">
+          <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold">Os custos em % somam {percentDeductionsTotal.toFixed(1).replace('.', ',')}% do preço — não sobra espaço pro custo dos itens.</p>
+            <p>
+              Impostos ({appSettings.defaultTaxRate}%) + Custo Variável ({variableCostPct}%) + Custo Fixo ({fixedCostPct}%) + Margem ({appSettings.targetReturnMargin}%).
+              Os preços sugeridos abaixo não são confiáveis. Confira o Faturamento Médio e os Custos Fixos em Configurações, ou reduza a margem desejada.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* HEALTH STATUS KPI CARDS 2.0 */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

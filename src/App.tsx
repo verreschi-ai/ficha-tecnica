@@ -749,11 +749,10 @@ export function App() {
   };
   const totalPayrollVal = fixedCosts.employees.reduce((acc, emp) => acc + calculateEmployeeTotal(emp), 0);
   const totalFixedCostVal = totalFixedExpensesVal + totalPayrollVal;
-  // Métrica de saúde do negócio como um todo (média geral) — usada no Dashboard e no
-  // Simulador de Cenários. NÃO é mais usada para calcular o preço sugerido por prato
-  // (ver custoFixoPorPratoRS abaixo), porque tratar custo fixo como "% do preço de CADA
-  // prato" distorcia pratos baratos e caros de forma desigual e reagia mal quando esse %
-  // ficava alto.
+  // Custo Fixo como % do faturamento (Custo Fixo Total ÷ Faturamento Médio Mensal). É aplicado
+  // como % do PREÇO de cada prato, igual a Impostos e Custo Variável: um prato barato carrega
+  // poucos reais de custo fixo e um caro carrega mais, na mesma proporção do que fatura. (O rateio
+  // antigo em R$ fixo por prato inflava o preço dos itens baratos.)
   const fixedCostPct = parseFloat(((totalFixedCostVal / (fixedCosts.monthlyRevenue || appSettings.monthlyRevenue || 1)) * 100).toFixed(1));
 
   const variableCostPct = parseFloat(
@@ -763,64 +762,18 @@ export function App() {
       .toFixed(1)
   );
 
-  // Rateio de Custo Fixo por prato, via Ticket Médio (sem precisar de volume de vendas por
-  // prato, que é volátil e difícil de manter atualizado). Faturamento Médio ÷ Ticket Médio
-  // estima quantos pedidos o estabelecimento faz por mês; dividindo o Custo Fixo Total por
-  // esse volume, chegamos a um valor em R$ fixo por prato — igual pra todos, e não mais um
-  // % do preço de cada um.
-  const ticketMedioGeral = sheets.length > 0
-    ? sheets.reduce((acc, s) => acc + (s.sellingPrice > 0 ? s.sellingPrice : (s.costPerPortion > 0 ? s.costPerPortion * 3.33 : 0)), 0) / sheets.length
-    : 0;
-  const faturamentoMedioMensal = fixedCosts.monthlyRevenue || appSettings.monthlyRevenue || 0;
+  // Soma das fatias que saem do preço (Impostos + Variável + Custo Fixo + Margem). O que sobra
+  // pro CMV é 100% menos isso; se passar de ~90%, nenhum preço fecha a conta.
+  const percentDeductionsTotal =
+    (appSettings.defaultTaxRate || 6.0) + variableCostPct + fixedCostPct + (appSettings.targetReturnMargin || 20.0);
+  const pricingStructureOverloaded = percentDeductionsTotal >= 90;
 
-  // Mix de vendas por categoria (opcional): em vez de assumir que todo prato vende a mesma
-  // quantidade (ticket médio geral), usa a % de faturamento que o usuário atribui a cada
-  // categoria + o ticket médio DAQUELA categoria pra estimar quantos pedidos ela representa.
-  // Isso corrige a distorção de categorias baratas e de alto giro (ex.: Marmitex) que, pelo
-  // método antigo, pareciam vender a mesma quantidade que categorias de ticket alto e baixo
-  // giro (ex.: Pizza) — inflando artificialmente o Custo Fixo rateado nos itens baratos.
-  const categoryRevenueShare = appSettings.categoryRevenueShare || {};
-  const configuredCats = Object.keys(categoryRevenueShare).filter((c) => (categoryRevenueShare[c] || 0) > 0);
-  const totalConfiguredSharePct = configuredCats.reduce((acc, c) => acc + (categoryRevenueShare[c] || 0), 0);
-
-  let volumeMensalEstimado = 0;
-  if (totalConfiguredSharePct > 0) {
-    volumeMensalEstimado = configuredCats.reduce((acc, cat) => {
-      const catSheets = sheets.filter((s) => s.category === cat);
-      const avgTicketCat = catSheets.length > 0
-        ? catSheets.reduce((a, s) => a + (s.sellingPrice > 0 ? s.sellingPrice : (s.costPerPortion > 0 ? s.costPerPortion * 3.33 : 0)), 0) / catSheets.length
-        : 0;
-      if (avgTicketCat <= 0) return acc;
-      // Normaliza pra somar 100% entre as categorias configuradas, protegendo contra o
-      // usuário não bater exatamente 100% no total.
-      const sharePct = (categoryRevenueShare[cat] || 0) / totalConfiguredSharePct;
-      const catRevenue = faturamentoMedioMensal * sharePct;
-      return acc + (catRevenue / avgTicketCat);
-    }, 0);
-  }
-
-  // Sem mix configurado (ou nenhuma categoria configurada bateu com pratos cadastrados):
-  // cai no método antigo de ticket médio geral.
-  if (volumeMensalEstimado <= 0) {
-    volumeMensalEstimado = ticketMedioGeral > 0 ? faturamentoMedioMensal / ticketMedioGeral : 0;
-  }
-
-  const custoFixoPorPratoRS = volumeMensalEstimado > 0 ? parseFloat((totalFixedCostVal / volumeMensalEstimado).toFixed(2)) : 0;
-
-  // Suggested Price Formula Calculation helper
+  // Preço sugerido: Custo dos Itens ÷ (1 − Impostos − Variável − Custo Fixo − Margem), todos em %.
   const calculateSuggestedPrice = (costInsumo: number) => {
-    const taxPct = appSettings.defaultTaxRate || 6.0;
-    const varPct = variableCostPct;
-    const marginPct = appSettings.targetReturnMargin || 20.0;
-    // Custo Fixo entra como valor fixo em R$ somado ao custo do insumo (não escala com o
-    // preço), só Impostos + Variável + Margem continuam sendo % do preço de venda.
-    const costWithOverhead = costInsumo + custoFixoPorPratoRS;
-    const totalPctDeductions = taxPct + varPct + marginPct;
-
-    if (totalPctDeductions < 90) {
-      return costWithOverhead / (1 - totalPctDeductions / 100);
+    if (!pricingStructureOverloaded) {
+      return costInsumo / (1 - percentDeductionsTotal / 100);
     }
-    return costWithOverhead * 3.5;
+    return costInsumo * 3.5;
   };
 
 
@@ -1539,7 +1492,8 @@ export function App() {
             <PricingReportTab
               sheets={sheets}
               fixedCostPct={fixedCostPct}
-              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              pricingStructureOverloaded={pricingStructureOverloaded}
+              percentDeductionsTotal={percentDeductionsTotal}
               variableCostPct={variableCostPct}
               appSettings={appSettings}
               calculateSuggestedPrice={calculateSuggestedPrice}
@@ -1554,7 +1508,6 @@ export function App() {
               sheets={sheets}
               rawIngredients={rawIngredients}
               fixedCostPct={fixedCostPct}
-              custoFixoPorPratoRS={custoFixoPorPratoRS}
               variableCostPct={variableCostPct}
               appSettings={appSettings}
               fixedCosts={fixedCosts}
@@ -1567,7 +1520,7 @@ export function App() {
           {activeTab === 'pdv-loja' && (
             <PDVLojaTab
               sheets={sheets}
-              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              fixedCostPct={fixedCostPct}
               variableCostPct={variableCostPct}
               appSettings={appSettings}
               calculateSuggestedPrice={calculateSuggestedPrice}
@@ -1578,7 +1531,7 @@ export function App() {
           {activeTab === 'ifood' && (
             <IfoodPricingTab
               sheets={sheets}
-              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              fixedCostPct={fixedCostPct}
               appSettings={appSettings}
               calculateSuggestedPrice={calculateSuggestedPrice}
             />
@@ -1588,7 +1541,7 @@ export function App() {
           {activeTab === '99food' && (
             <NineninePricingTab
               sheets={sheets}
-              custoFixoPorPratoRS={custoFixoPorPratoRS}
+              fixedCostPct={fixedCostPct}
               appSettings={appSettings}
               calculateSuggestedPrice={calculateSuggestedPrice}
             />

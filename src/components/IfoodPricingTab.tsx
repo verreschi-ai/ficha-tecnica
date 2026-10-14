@@ -5,12 +5,12 @@ import { IfoodLogo } from './IfoodLogo';
 
 interface IfoodPricingTabProps {
   sheets: TechnicalSheet[];
-  custoFixoPorPratoRS: number;
+  fixedCostPct: number;
   appSettings: AppSettings;
   calculateSuggestedPrice: (costInsumo: number) => number;
 }
 
-export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, custoFixoPorPratoRS, appSettings, calculateSuggestedPrice }) => {
+export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, fixedCostPct, appSettings, calculateSuggestedPrice }) => {
   const taxRate = Number(appSettings.defaultTaxRate) || 6;
   // Delivery Plan state
   const [deliveryPlan, setDeliveryPlan] = useState<'store' | 'partner'>('store');
@@ -535,12 +535,14 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, custoF
 
                   // Net revenue received by restaurant after iFood's own fees and campaigns:
                   const netReceived = ifoodSuggestedPrice * (1 - (totalTaxPercent / 100) - (totalCampaignPct / 100));
-                  // Margem de verdade: também desconta Custo Fixo (rateio real por prato) e os
+                  // Margem de verdade: também desconta Custo Fixo (a mesma % do faturamento, sobre o preço de
+                  // balcão do prato — o custo fixo dele não muda por vender pelo app) e os
                   // Impostos do PRÓPRIO restaurante (Simples Nacional etc.) — esses continuam
                   // devidos independente do canal de venda, e antes não entravam nessa conta.
+                  const fixedCostRS = (basePrice * fixedCostPct) / 100;
                   const taxValueAtIfoodPrice = (ifoodSuggestedPrice * taxRate) / 100;
                   const netMarginPercent = ifoodSuggestedPrice > 0
-                    ? ((netReceived - sheet.costPerPortion - custoFixoPorPratoRS - taxValueAtIfoodPrice) / ifoodSuggestedPrice) * 100
+                    ? ((netReceived - sheet.costPerPortion - fixedCostRS - taxValueAtIfoodPrice) / ifoodSuggestedPrice) * 100
                     : sheet.margin;
 
                   return (

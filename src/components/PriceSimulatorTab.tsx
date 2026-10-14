@@ -21,7 +21,6 @@ interface PriceSimulatorTabProps {
   sheets: TechnicalSheet[];
   rawIngredients: RawIngredientItem[];
   fixedCostPct: number;
-  custoFixoPorPratoRS: number;
   variableCostPct: number;
   appSettings: AppSettings;
   fixedCosts: FixedCostsData;
@@ -33,7 +32,6 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
   sheets,
   rawIngredients,
   fixedCostPct,
-  custoFixoPorPratoRS,
   variableCostPct,
   appSettings,
   fixedCosts,
@@ -131,11 +129,14 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
       const absoluteFloorPrice = pctDivisorFloor > 0 ? Number((costInsumo / pctDivisorFloor).toFixed(2)) : costInsumo * 2;
 
       // Preço do Cenário: aplica os sliders (quanto de Custo Fixo recuperar + margem desejada).
-      const fixedRecoveryValue = Number(((custoFixoPorPratoRS * tocFixedRecoveryPct) / 100).toFixed(2));
-      const pctDivisorScenario = 1 - (variableCostPct + taxRateToc + tocMarginGoal) / 100;
+      // Custo Fixo entra como % do preço (a fatia real, de {fixedCostPct}% do faturamento, vezes o
+      // quanto o slider manda recuperar), igual a Impostos e Variável.
+      const fixedRecoveryPctOfPrice = (fixedCostPct * tocFixedRecoveryPct) / 100;
+      const pctDivisorScenario = 1 - (variableCostPct + taxRateToc + tocMarginGoal + fixedRecoveryPctOfPrice) / 100;
       const scenarioPrice = pctDivisorScenario > 0
-        ? Number(((costInsumo + fixedRecoveryValue) / pctDivisorScenario).toFixed(2))
-        : (costInsumo + fixedRecoveryValue) * 2;
+        ? Number((costInsumo / pctDivisorScenario).toFixed(2))
+        : costInsumo * 2;
+      const fixedRecoveryValue = Number(((scenarioPrice * fixedRecoveryPctOfPrice) / 100).toFixed(2));
 
       const variableValueAtScenario = Number(((scenarioPrice * variableCostPct) / 100).toFixed(2));
       const taxValueAtScenario = Number(((scenarioPrice * taxRateToc) / 100).toFixed(2));
@@ -157,7 +158,7 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
         situacao
       };
     });
-  }, [sheets, variableCostPct, taxRateToc, custoFixoPorPratoRS, tocFixedRecoveryPct, tocMarginGoal]);
+  }, [sheets, variableCostPct, taxRateToc, fixedCostPct, tocFixedRecoveryPct, tocMarginGoal]);
 
   const filteredTocMetrics = useMemo(() => {
     return tocMetrics.filter(m =>
@@ -988,9 +989,9 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
             <div className="bento-card">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Custo Fixo Considerado</span>
               <div className="flex items-baseline justify-between mt-3">
-                <span className="text-3xl font-black font-mono text-slate-900">R$ {((custoFixoPorPratoRS * tocFixedRecoveryPct) / 100).toFixed(2).replace('.', ',')}</span>
+                <span className="text-3xl font-black font-mono text-slate-900">{((fixedCostPct * tocFixedRecoveryPct) / 100).toFixed(1).replace('.', ',')}% do preço</span>
               </div>
-              <span className="text-[10px] text-slate-400 mt-1 block">de R$ {custoFixoPorPratoRS.toFixed(2).replace('.', ',')} (rateio integral real)</span>
+              <span className="text-[10px] text-slate-400 mt-1 block">de {fixedCostPct.toString().replace('.', ',')}% (custo fixo integral real, % do faturamento)</span>
             </div>
 
             <div className="bento-card">
