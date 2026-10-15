@@ -28,6 +28,14 @@ interface PriceSimulatorTabProps {
   onBatchUpdatePrices?: (updatedSheets: { id: string; newPrice: number }[]) => void;
 }
 
+// "12,50" / "12.5" -> 12.5; vazio ou inválido -> 0 (sem preço manual).
+const parseManualPrice = (text: string | undefined): number => {
+  if (!text) return 0;
+  // Com vírgula, os pontos são separador de milhar ("1.250,50"); sem vírgula, o ponto é decimal.
+  const n = Number(text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text);
+  return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : 0;
+};
+
 export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
   sheets,
   rawIngredients,
@@ -64,6 +72,9 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState<string>('');
+  // Preços digitados à mão na tabela, só para teste (id do prato -> texto digitado). Não mexem
+  // na ficha real: só viram preço de verdade se o usuário clicar em "Aplicar Preços".
+  const [manualPriceText, setManualPriceText] = useState<Record<string, string>>({});
   const [appliedSuccessMsg, setAppliedSuccessMsg] = useState<string | null>(null);
 
   // Categories list
@@ -110,6 +121,7 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
     setSimulatedExtraFixedExpense(0);
     setTocFixedRecoveryPct(100);
     setTocMarginGoal(appSettings.targetReturnMargin || 20);
+    setManualPriceText({});
     setAppliedSuccessMsg(null);
   };
 
@@ -215,6 +227,10 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
         }
       }
 
+      // Preço digitado à mão na tabela vale mais que qualquer outra simulação de preço.
+      const manualPrice = parseManualPrice(manualPriceText[sheet.id]);
+      if (manualPrice > 0) simSellPrice = manualPrice;
+
       const simActivePrice = simSellPrice > 0 ? simSellPrice : (calculateSuggestedPrice(simCostInsumo) || simCostInsumo * 3.5);
 
       // 3. Calculate Original vs Simulated Margins & CMV
@@ -280,7 +296,8 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
     fixedCostPct,
     variableCostPct,
     appSettings,
-    calculateSuggestedPrice
+    calculateSuggestedPrice,
+    manualPriceText
   ]);
 
   // Filtered by search and mode
@@ -902,16 +919,35 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
                         )}
                       </td>
 
-                      {/* Preço de Venda (Antes -> Simulado) */}
+                      {/* Preço de Venda: campo aberto para testar um preço sem alterar o real */}
                       <td className="p-3.5 text-right font-mono">
-                        <div className="font-bold text-slate-900">
-                          R$ {sheet.simSellPrice > 0 ? sheet.simSellPrice.toFixed(2).replace('.', ',') : sheet.origSellPrice.toFixed(2).replace('.', ',')}
+                        <div className="relative w-28 ml-auto">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">R$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            aria-label={`Preço de venda de teste: ${sheet.name}`}
+                            value={manualPriceText[sheet.id] ?? ''}
+                            placeholder={sheet.simSellPrice > 0 ? sheet.simSellPrice.toFixed(2).replace('.', ',') : '0,00'}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/[^0-9.,]/g, '');
+                              setManualPriceText((prev) => {
+                                const next = { ...prev };
+                                if (v === '') delete next[sheet.id];
+                                else next[sheet.id] = v;
+                                return next;
+                              });
+                            }}
+                            className={`w-full text-right bg-white border rounded-lg pl-6 pr-2 py-1.5 text-xs font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:border-orange-500 ${
+                              manualPriceText[sheet.id] ? 'border-orange-400 bg-orange-50/40' : 'border-slate-300'
+                            }`}
+                          />
                         </div>
-                        {sheet.simSellPrice !== sheet.origSellPrice && sheet.simSellPrice > 0 && (
-                          <div className="text-[10px] text-slate-500 line-through">
-                            R$ {sheet.origSellPrice.toFixed(2).replace('.', ',')}
-                          </div>
-                        )}
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          {sheet.origSellPrice > 0
+                            ? `Real: R$ ${sheet.origSellPrice.toFixed(2).replace('.', ',')}`
+                            : 'Sem preço cadastrado'}
+                        </div>
                       </td>
 
                       {/* CMV Simulado */}
