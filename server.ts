@@ -3,7 +3,9 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { MercadoPagoConfig, Payment, PreApproval } from "mercadopago";
+import { Pool } from "pg";
 import { getStoredSubscription, saveSubscriptionStatus } from "./subscriptionStore";
+import { createExportStore } from "./exportStore";
 import type {
   AppSettings,
   Employee,
@@ -79,15 +81,12 @@ async function startServer() {
     });
   };
 
-  // Cache em memória do snapshot mais recente de fichas técnicas + insumos, alimentado pelo
-  // próprio front-end (POST /api/export/push, chamado sempre que o usuário salva algo) e servido
-  // pro painel de marketing (GET /api/export/summary). Não usa Firestore: os dados reais do app
-  // vivem só no localStorage do navegador do usuário (o código de sincronização com o Firestore
-  // em src/services/firebaseService.ts nunca chegou a ser ligado em lugar nenhum do app, e as
-  // variáveis VITE_FIREBASE_* nem estão configuradas no Render), então a única fonte confiável é
-  // o próprio front-end enviando o que tem em mãos. Some a cada reinício do servidor (Render free
-  // tier reinicia em cada deploy e após ociosidade) — se reconstrói sozinho na próxima vez que
-  // alguém abrir o app, o que é suficiente aqui já que só alimenta o resumo que a Ana comenta.
+  // Snapshot mais recente de fichas técnicas, insumos, custos e colaboradores, enviado pelo próprio
+  // front-end (POST /api/export/push, sempre que o usuário salva algo) e servido ao painel de
+  // marketing / Ana (GET /api/export/summary). Fica em memória pra responder rápido e, quando
+  // DATABASE_URL está configurada, também é gravado num Postgres: o Render free tier reinicia a
+  // cada deploy e depois de ociosidade, e sem o banco o snapshot sumia até alguém abrir o app.
+  // Sem DATABASE_URL o servidor continua funcionando, só que voltando a perder o snapshot ao reiniciar.
   let exportCache: {
     sheets: TechnicalSheet[];
     insumos: RawIngredientItem[];
@@ -96,6 +95,23 @@ async function startServer() {
     appSettings: Pick<AppSettings, "defaultTaxRate" | "targetReturnMargin">;
     updatedAt: string;
   } | null = null;
+
+  const exportStore = process.env.DATABASE_URL
+    ? (() => {
+        const pool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          max: 3,
+          idleTimeoutMillis: 30_000,
+          connectionTimeoutMillis: 10_000,
+        });
+        // Bancos serverless (Neon) fecham conexões ociosas; sem este handler o erro derruba o processo.
+        pool.on("error", (err) => console.error("[exportStore] Erro numa conexão ociosa do Postgres:", err.message));
+        return createExportStore(pool);
+      })()
+    : null;
+  if (!exportStore) {
+    console.warn("[exportStore] DATABASE_URL não configurada: o snapshot da Ficha Técnica fica só em memória e some ao reiniciar o servidor.");
+  }
 
   // Initialize Gemini AI client server-side
   const getGeminiClient = () => {
@@ -568,6 +584,11 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
       },
       updatedAt: new Date().toISOString(),
     };
+
+    // Grava no banco sem segurar a resposta do navegador; se falhar, o próximo envio tenta de novo.
+    exportStore?.save(ownerEmail, exportCache).catch((err) => {
+      console.error("[exportStore] Falha ao gravar o snapshot no Postgres:", err?.message || err);
+    });
     res.status(204).send();
   });
 
@@ -582,7 +603,7 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   // o próprio painel de marketing tem o token pra chamá-lo — então o limite só atrapalhava
   // sem conter abuso nenhum de verdade. O cache de 2 minutos do lado do painel de marketing
   // já evita qualquer chamada excessiva.
-  app.get("/api/export/summary", (req, res) => {
+  app.get("/api/export/summary", async (req, res) => {
     const expectedToken = process.env.EXPORT_API_TOKEN;
     if (!expectedToken) {
       return res.status(503).json({ error: "Exportação não configurada no servidor (EXPORT_API_TOKEN)." });
@@ -590,6 +611,16 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
     const providedToken = String(req.header("x-export-token") || "").trim();
     if (!providedToken || providedToken !== expectedToken) {
       return res.status(401).json({ error: "Token de exportação inválido." });
+    }
+
+    // Depois de um reinício a memória está vazia: recupera o último snapshot gravado no banco.
+    const ownerEmailForLoad = process.env.EXPORT_OWNER_EMAIL;
+    if (!exportCache && exportStore && ownerEmailForLoad) {
+      try {
+        exportCache = await exportStore.load<NonNullable<typeof exportCache>>(ownerEmailForLoad);
+      } catch (err: any) {
+        console.error("[exportStore] Falha ao ler o snapshot do Postgres:", err?.message || err);
+      }
     }
 
     if (!exportCache) {

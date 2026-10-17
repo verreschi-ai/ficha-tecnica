@@ -18,3 +18,5 @@ services:
         sync: false
       - key: EXPORT_OWNER_EMAIL
         sync: false
+      - key: DATABASE_URL
+        sync: false

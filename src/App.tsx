@@ -55,7 +55,7 @@ import { NineninePricingTab } from './components/NineninePricingTab';
 import { PricingReportTab } from './components/PricingReportTab';
 import { PriceSimulatorTab } from './components/PriceSimulatorTab';
 import { fetchUserDataFromFirestore, saveUserDataToFirestore, SyncedUserData, auth as firebaseAuth } from './services/firebaseService';
-import { restoreLocalPhotos } from './utils/cloudSync';
+import { restoreLocalPhotos, stripPhotos } from './utils/cloudSync';
 
 import {
   Printer,
@@ -1085,7 +1085,9 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: cleanEmail,
-          sheets,
+          // Sem as fotos: o resumo não as usa e, com várias fotos (texto base64), o envio passava
+          // do limite do servidor (5 MB) e era descartado em silêncio.
+          sheets: stripPhotos({ sheets }).sheets,
           insumos: rawIngredients,
           fixedCosts,
           variableCosts,
