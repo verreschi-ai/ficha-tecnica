@@ -642,6 +642,24 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
       cmv: Number(r.cmv) || 0,
       margin: Number(r.margin) || 0,
       status: String(r.status ?? "ideal"),
+      // Composição real da receita (ingredientes com quantidade/fator de
+      // correção/custo, e o modo de preparo) — o painel de marketing (Ana)
+      // usa isso pra responder perguntas sobre o que entra em cada prato,
+      // não só os números agregados de CMV/margem acima.
+      yieldServings: Number(r.yieldServings) || 0,
+      portionWeight: String(r.portionWeight ?? ""),
+      ingredients: Array.isArray(r.ingredients)
+        ? r.ingredients.map((ing: any) => ({
+            name: String(ing?.name ?? ""),
+            grossQty: Number(ing?.grossQty) || 0,
+            netQty: Number(ing?.netQty) || 0,
+            unit: String(ing?.unit ?? ""),
+            unitPrice: Number(ing?.unitPrice) || 0,
+            fc: Number(ing?.fc) || 0,
+            totalCost: Number(ing?.totalCost) || 0,
+          }))
+        : [],
+      preparationSteps: Array.isArray(r.preparationSteps) ? r.preparationSteps.map((s: any) => String(s)) : [],
     }));
 
     const insumos = exportCache.insumos.map((i) => ({
