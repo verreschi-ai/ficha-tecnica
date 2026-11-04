@@ -7,7 +7,6 @@ import {
   ShieldAlert,
   RotateCcw,
   Search,
-  Printer,
   Package,
   Building2,
   Check,
@@ -16,6 +15,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { formatNumeroBRL } from '../utils/formatters';
+import { PrintReportButton } from './PrintReportButton';
 
 interface PriceSimulatorTabProps {
   sheets: TechnicalSheet[];
@@ -366,7 +366,10 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300" data-print-area>
+      <div className="print-only text-xs text-slate-600">
+        Simulador de Cenários · Margem de Chef · impresso em {new Date().toLocaleDateString('pt-BR')}
+      </div>
       {/* HEADER BANNER 2.0 */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -391,20 +394,13 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={handleResetSimulation}
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer"
+            className="no-print p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer"
             title="Resetar todos os parâmetros simulados"
           >
             <RotateCcw size={15} />
             <span>Resetar</span>
           </button>
-          <button
-            onClick={() => window.print()}
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer"
-            title="Imprimir simulação"
-          >
-            <Printer size={15} />
-            <span>Imprimir</span>
-          </button>
+          <PrintReportButton label="Imprimir" variant="light" />
         </div>
       </div>
 
@@ -854,7 +850,7 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
           </div>
 
           <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
-            <div className="relative w-full sm:w-64">
+            <div className="no-print relative w-full sm:w-64">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -868,7 +864,7 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
             {onBatchUpdatePrices && (
               <button
                 onClick={handleApplySimulatedPrices}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer shrink-0 active:scale-95"
+                className="no-print bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer shrink-0 active:scale-95"
               >
                 <Check size={14} />
                 <span>Aplicar Preços</span>
@@ -1067,7 +1063,7 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
                   CMV, Impostos e Custo Variável travados no valor real — só Custo Fixo e Margem seguem os sliders acima.
                 </p>
               </div>
-              <div className="relative w-full sm:w-64">
+              <div className="no-print relative w-full sm:w-64">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"

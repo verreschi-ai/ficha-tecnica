@@ -1256,7 +1256,7 @@ export function App() {
         <main className="max-w-[1600px] mx-auto px-4 sm:px-8 pt-6 space-y-6">
 
           {syncError && (
-            <div role="alert" className="bg-red-50 border border-red-300 text-red-900 p-4 rounded-2xl flex items-start space-x-3 text-xs">
+            <div role="alert" className="no-print bg-red-50 border border-red-300 text-red-900 p-4 rounded-2xl flex items-start space-x-3 text-xs">
               <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-bold">Seu cadastro não está sendo salvo na nuvem.</p>

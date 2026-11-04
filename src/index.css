@@ -220,3 +220,66 @@ input[type="number"] {
     print-color-adjust: exact !important;
   }
 }
+
+/* IMPRESSÃO DE RELATÓRIOS (Relatório de Precificação, Simulador): orientação e "reduzir para
+   caber" são escolhidos no botão Imprimir (src/utils/printReport.ts), que liga a classe
+   print-report no <html>, define --print-zoom e injeta o @page com a orientação. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+
+  html.print-report body {
+    height: auto !important;
+    overflow: visible !important;
+    font-size: inherit !important;
+  }
+
+  html.print-report * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* O recuo de 16rem existe só para abrir espaço ao menu lateral, que não sai no papel. */
+  html.print-report .lg\:pl-64 {
+    padding-left: 0 !important;
+  }
+
+  html.print-report main {
+    max-width: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  html.print-report [data-print-area] {
+    zoom: var(--print-zoom, 1);
+  }
+
+  html.print-report [data-print-area],
+  html.print-report [data-print-area] * {
+    animation: none !important;
+    box-shadow: none !important;
+  }
+
+  html.print-report [data-print-area] .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  html.print-report [data-print-area] table {
+    width: 100% !important;
+  }
+
+  html.print-report [data-print-area] thead {
+    display: table-header-group;
+  }
+
+  html.print-report [data-print-area] tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BarChart3, Printer, AlertTriangle, CheckCircle2, TrendingUp, DollarSign, Search, ShieldAlert, Sparkles, ArrowRight, Receipt } from 'lucide-react';
 import { TechnicalSheet, AppSettings } from '../types';
 import { DreUnitariaModal } from './DreUnitariaModal';
+import { PrintReportButton } from './PrintReportButton';
 
 interface PricingReportTabProps {
   sheets: TechnicalSheet[];
@@ -112,7 +113,10 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
     .sort((a, b) => a.profitPct - b.profitPct);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300" data-print-area>
+      <div className="print-only text-xs text-slate-600">
+        Relatório de Precificação · Margem de Chef · impresso em {new Date().toLocaleDateString('pt-BR')}
+      </div>
       {/* HEADER BANNER 2.0 */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -134,13 +138,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => window.print()}
-          className="bg-[#1A1513] hover:bg-[#2A1D17] text-white font-bold text-xs px-5 py-3 rounded-2xl flex items-center space-x-2 transition-all shadow-md cursor-pointer shrink-0 active:scale-95"
-        >
-          <Printer size={16} />
-          <span>Imprimir Relatório</span>
-        </button>
+        <PrintReportButton label="Imprimir Relatório" />
       </div>
 
       {pricingStructureOverloaded && (
@@ -212,7 +210,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 
       {/* SEARCH AND CONTROLS */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
+        <div className="no-print relative w-full sm:w-80">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -250,7 +248,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                 <th className="p-3.5 text-right text-emerald-700">Preço Sugerido</th>
                 <th className="p-3.5 text-right">Lucro Esperado</th>
                 <th className="p-3.5 text-center">Status</th>
-                <th className="p-3.5 text-right">Ação</th>
+                <th className="no-print p-3.5 text-right">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -353,7 +351,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                         </div>
                       </td>
 
-                      <td className="p-3.5 text-right">
+                      <td className="no-print p-3.5 text-right">
                         <div className="flex items-center justify-end space-x-1.5">
                           {onEditSheet && (
                             <button
