@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { TechnicalSheet, AppSettings } from '../types';
 import { Store, Search, Printer, Calculator, Info, Gift, Tag, Flame } from 'lucide-react';
+import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
 
 interface PDVLojaTabProps {
   sheets: TechnicalSheet[];
@@ -18,6 +19,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
   calculateSuggestedPrice,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_FILTER);
 
   // Promoções do PDV (%/R$ próprios da loja, não de plataforma):
   const [enableFreeFee, setEnableFreeFee] = useState(false);
@@ -69,8 +71,9 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
   }, [sheets, fixedCostPct, variableCostPct, taxRate, targetMargin, calculateSuggestedPrice, enableFreeFee, freeFeeValue, enableDiscount, discountPct]);
 
   const filtered = metrics.filter(m =>
-    m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (m.sheet.category && m.sheet.category.toLowerCase().includes(searchTerm.toLowerCase()))
+    (categoryFilter === ALL_FILTER || m.sheet.category === categoryFilter) &&
+    (m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (m.sheet.category && m.sheet.category.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
   const handlePrint = () => {
@@ -237,7 +240,9 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
             </button>
           </div>
 
-          <div className="relative w-full sm:w-72">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <FilterSelect label="Categoria" value={categoryFilter} onChange={setCategoryFilter} options={uniqueOptions(sheets.map((x) => x.category))} />
+            <div className="relative w-full sm:w-72">
             <Search size={16} className="absolute left-3 top-3 text-slate-400" />
             <input
               type="text"
@@ -246,6 +251,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400"
             />
+          </div>
           </div>
         </div>
 

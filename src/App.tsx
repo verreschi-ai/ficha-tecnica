@@ -86,6 +86,7 @@ import {
   X,
   LogOut
 } from 'lucide-react';
+import { FilterSelect, uniqueOptions } from './components/FilterSelect';
 
 // Marca que este aparelho tem edições que ainda não chegaram à nuvem (envio pendente ou
 // falhou). No próximo login, o cadastro local prevalece sobre o da nuvem -- senão uma cópia
@@ -1294,6 +1295,7 @@ export function App() {
               <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
                 
                 {/* SEARCH INPUT */}
+                <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                 <div className="relative w-full sm:w-80">
                   <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
@@ -1303,6 +1305,8 @@ export function App() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-orange-500 placeholder-slate-400"
                   />
+                </div>
+                <FilterSelect label="Categoria" value={selectedCategory} onChange={setSelectedCategory} options={uniqueOptions(sheets.map((x) => x.category))} />
                 </div>
 
                 {/* ACTION BUTTONS GROUP */}

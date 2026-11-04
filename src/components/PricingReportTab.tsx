@@ -3,6 +3,7 @@ import { BarChart3, Printer, AlertTriangle, CheckCircle2, TrendingUp, DollarSign
 import { TechnicalSheet, AppSettings } from '../types';
 import { DreUnitariaModal } from './DreUnitariaModal';
 import { PrintReportButton } from './PrintReportButton';
+import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
 
 interface PricingReportTabProps {
   sheets: TechnicalSheet[];
@@ -46,6 +47,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
   onEditSheet,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_FILTER);
   const [statusFilter, setStatusFilter] = useState<'all' | 'healthy' | 'warning' | 'danger'>('all');
   const [dreSheetId, setDreSheetId] = useState<string | null>(null);
 
@@ -107,6 +109,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
       const matchesSearch = m.sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             (m.sheet.category && m.sheet.category.toLowerCase().includes(searchTerm.toLowerCase()));
       if (!matchesSearch) return false;
+      if (categoryFilter !== ALL_FILTER && m.sheet.category !== categoryFilter) return false;
       if (statusFilter === 'all') return true;
       return m.status === statusFilter;
     })
@@ -210,7 +213,9 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
 
       {/* SEARCH AND CONTROLS */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="no-print relative w-full sm:w-80">
+        <div className="no-print flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        <FilterSelect label="Categoria" value={categoryFilter} onChange={setCategoryFilter} options={uniqueOptions(sheets.map((x) => x.category))} />
+        <div className="relative w-full sm:w-80">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -219,6 +224,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-medium text-slate-900 focus:outline-none focus:border-slate-400 transition-colors"
           />
+        </div>
         </div>
 
         <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">

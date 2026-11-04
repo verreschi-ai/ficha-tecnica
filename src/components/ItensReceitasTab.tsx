@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { downloadExcelTemplate, parseExcelOrCsvFile, parsePriceValue } from '../utils/excelImportExport';
 import { formatNumeroBRL } from '../utils/formatters';
+import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
 
 interface ItensReceitasTabProps {
   ingredients: RawIngredientItem[];
@@ -35,6 +36,14 @@ export const ItensReceitasTab: React.FC<ItensReceitasTabProps> = ({
   mode = 'itens'
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_FILTER);
+  const [supplierFilter, setSupplierFilter] = useState(ALL_FILTER);
+
+  // Categorias e fornecedores de itens e de receitas são listas diferentes: ao trocar de aba, limpa os filtros.
+  useEffect(() => {
+    setCategoryFilter(ALL_FILTER);
+    setSupplierFilter(ALL_FILTER);
+  }, [mode]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RawIngredientItem | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
@@ -230,9 +239,15 @@ export const ItensReceitasTab: React.FC<ItensReceitasTabProps> = ({
     }));
   }, [ingredients]);
 
+  const modeItems = ingredients.filter((i) => (mode === 'receitas' ? i.isRecipe : mode === 'itens' ? !i.isRecipe : true));
+  const categoryOptions = uniqueOptions(modeItems.map((i) => i.category));
+  const supplierOptions = uniqueOptions(modeItems.map((i) => i.supplier));
+
   const filteredItems = ingredients.filter((item) => {
     if (mode === 'itens' && item.isRecipe) return false;
     if (mode === 'receitas' && !item.isRecipe) return false;
+    if (categoryFilter !== ALL_FILTER && item.category !== categoryFilter) return false;
+    if (supplierFilter !== ALL_FILTER && item.supplier !== supplierFilter) return false;
 
     return item.name.toLowerCase().includes(searchQuery.toLowerCase());
   });
@@ -471,7 +486,8 @@ export const ItensReceitasTab: React.FC<ItensReceitasTabProps> = ({
 
       {/* SEARCH BAR */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200 flex flex-col sm:flex-row gap-3 items-center justify-between shadow-xs">
-        <div className="relative w-full sm:w-96">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-96">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -480,6 +496,11 @@ export const ItensReceitasTab: React.FC<ItensReceitasTabProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-9 pr-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 placeholder-slate-400"
           />
+        </div>
+          <FilterSelect label="Categoria" value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} />
+          {mode !== 'receitas' && (
+            <FilterSelect label="Fornecedor" value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} />
+          )}
         </div>
 
         <span className="text-xs font-bold text-slate-500">

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { TechnicalSheet, AppSettings } from '../types';
 import { ShoppingCart, Store, Bike, Percent, DollarSign, Search, Sparkles, AlertCircle, Info, Calculator, Tag, Flame, Gift, CheckCircle2, Printer } from 'lucide-react';
 import { IfoodLogo } from './IfoodLogo';
+import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
 
 interface IfoodPricingTabProps {
   sheets: TechnicalSheet[];
@@ -32,6 +33,7 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, fixedC
   const [freeShippingPct, setFreeShippingPct] = useState<number>(8.00); // Free shipping cost assumed by restaurant %
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_FILTER);
 
   // Handle plan selection
   const handleSelectPlan = (plan: 'store' | 'partner') => {
@@ -53,8 +55,9 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, fixedC
   // Filtered sheets
   const filteredSheets = sheets.filter(
     (sheet) =>
-      sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sheet.category.toLowerCase().includes(searchTerm.toLowerCase())
+      (categoryFilter === ALL_FILTER || sheet.category === categoryFilter) &&
+      (sheet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      sheet.category.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const formatCurrency = (val: number) => {
@@ -446,7 +449,9 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, fixedC
             </button>
           </div>
 
-          <div className="relative w-full sm:w-72">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <FilterSelect label="Categoria" value={categoryFilter} onChange={setCategoryFilter} options={uniqueOptions(sheets.map((x) => x.category))} />
+            <div className="relative w-full sm:w-72">
             <Search size={16} className="absolute left-3 top-3 text-slate-400" />
             <input
               type="text"
@@ -455,6 +460,7 @@ export const IfoodPricingTab: React.FC<IfoodPricingTabProps> = ({ sheets, fixedC
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
+          </div>
           </div>
         </div>
 
