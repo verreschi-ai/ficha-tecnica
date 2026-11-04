@@ -3,6 +3,7 @@ import { TechnicalSheet, AppSettings } from '../types';
 import { ShoppingCart, Store, Car, Percent, DollarSign, Search, Sparkles, AlertCircle, Info, Calculator, Tag, Flame, Printer } from 'lucide-react';
 import { NineNineLogo } from './NineNineLogo';
 import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
+import { NINENINE_PRESETS, nineninePriceDivisor } from '../utils/ninenineCampaign';
 
 interface NineninePricingTabProps {
   sheets: TechnicalSheet[];
@@ -21,11 +22,11 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, 
   const [additionalLogisticsFee, setAdditionalLogisticsFee] = useState<number>(5.00); // R$ 5.00 default additional logistics fee for platform delivery
 
   // Campaigns Global Configuration state (exclusively in percentage %)
-  const [enableMyInvestment, setEnableMyInvestment] = useState<boolean>(false);
-  const [myInvestmentPct, setMyInvestmentPct] = useState<number>(5.00); // Meu Investimento %
-
-  const [enableNinetyNineInvestment, setEnableNinetyNineInvestment] = useState<boolean>(false);
-  const [ninetyNineInvestmentPct, setNinetyNineInvestmentPct] = useState<number>(5.00); // Investimento da 99 %
+  // Oferta de desconto do portal da 99: % de desconto sobre o preço de lista e quanto desse
+  // desconto a loja paga (a 99 devolve o resto). Começa na oferta 40% com subsídio.
+  const [enableDiscount, setEnableDiscount] = useState<boolean>(false);
+  const [discountPct, setDiscountPct] = useState<number>(NINENINE_PRESETS[0].discountPct);
+  const [storeSharePct, setStoreSharePct] = useState<number>(NINENINE_PRESETS[0].storeSharePct);
 
   const [enableLogisticsCampaign, setEnableLogisticsCampaign] = useState<boolean>(false);
   const [logisticsCampaignPct, setLogisticsCampaignPct] = useState<number>(6.00); // Custos Logísticos / Frete Grátis %
@@ -73,13 +74,12 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, 
       // em vez do antigo "custo × 2,5" arbitrário e desconectado da configuração real.
       const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : calculateSuggestedPrice(sheet.costPerPortion);
       
-      let totalCampaignPct = 0;
-      if (enableMyInvestment) totalCampaignPct += myInvestmentPct;
-      if (enableNinetyNineInvestment) totalCampaignPct += ninetyNineInvestmentPct;
-      if (enableLogisticsCampaign) totalCampaignPct += logisticsCampaignPct;
-
-      const totalDeductionPct = totalTaxPercent + totalCampaignPct;
-      const divisor = 1 - (totalDeductionPct / 100);
+      const divisor = nineninePriceDivisor({
+        taxPct: totalTaxPercent,
+        discountPct: enableDiscount ? discountPct : 0,
+        storeSharePct,
+        logisticsPct: enableLogisticsCampaign ? logisticsCampaignPct : 0,
+      });
       const logisticsFeeAddon = logisticsPlan === 'platform' ? additionalLogisticsFee : 0;
       const nineninePrice = divisor > 0 ? (basePrice + logisticsFeeAddon) / divisor : basePrice * 1.5;
 
@@ -295,64 +295,70 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, 
           </div>
 
           <div className="space-y-3">
-            {/* Meu Investimento */}
-            <div className={`p-3 rounded-xl border transition-all ${enableMyInvestment ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+            {/* Oferta de desconto (portal da 99) */}
+            <div className={`p-3 rounded-xl border transition-all ${enableDiscount ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
               <div className="flex items-center justify-between mb-1">
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={enableMyInvestment}
-                    onChange={(e) => setEnableMyInvestment(e.target.checked)}
+                    checked={enableDiscount}
+                    onChange={(e) => setEnableDiscount(e.target.checked)}
                     className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
                   />
-                  <span className="font-bold text-slate-900 text-xs">Meu Investimento — Cupom de Desconto</span>
+                  <span className="font-bold text-slate-900 text-xs">Oferta de desconto da 99</span>
                 </label>
-                {enableMyInvestment && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-bold">100% Loja</span>}
+                {enableDiscount && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-bold">Loja {storeSharePct}% / 99 {Math.round((100 - storeSharePct) * 10) / 10}%</span>}
               </div>
-              {enableMyInvestment && (
-                <div className="mt-2 flex items-center space-x-2">
-                  <span className="text-[10px] text-slate-600">Desconto (%):</span>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="100"
-                    value={myInvestmentPct}
-                    onChange={(e) => setMyInvestmentPct(parseFloat(e.target.value) || 0)}
-                    className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
-                  />
-                  <span className="text-[10px] text-slate-400">%</span>
-                </div>
-              )}
-            </div>
-
-            {/* Investimento da 99 */}
-            <div className={`p-3 rounded-xl border transition-all ${enableNinetyNineInvestment ? 'bg-yellow-50/50 border-yellow-300' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={enableNinetyNineInvestment}
-                    onChange={(e) => setEnableNinetyNineInvestment(e.target.checked)}
-                    className="rounded text-yellow-600 focus:ring-yellow-500 w-4 h-4"
-                  />
-                  <span className="font-bold text-slate-900 text-xs">Investimento da 99</span>
-                </label>
-                {enableNinetyNineInvestment && <span className="text-[10px] bg-yellow-600 text-white px-2 py-0.5 rounded font-bold">Cofinanciado</span>}
-              </div>
-              {enableNinetyNineInvestment && (
-                <div className="mt-2 flex items-center space-x-2">
-                  <span className="text-[10px] text-slate-600">Custo Loja (%):</span>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="100"
-                    value={ninetyNineInvestmentPct}
-                    onChange={(e) => setNinetyNineInvestmentPct(parseFloat(e.target.value) || 0)}
-                    className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
-                  />
-                  <span className="text-[10px] text-slate-400">%</span>
+              {enableDiscount && (
+                <div className="mt-2 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {NINENINE_PRESETS.map((preset) => {
+                      const active = preset.discountPct === discountPct && preset.storeSharePct === storeSharePct;
+                      return (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => { setDiscountPct(preset.discountPct); setStoreSharePct(preset.storeSharePct); }}
+                          aria-pressed={active}
+                          className={`text-left px-3 py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors ${
+                            active ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
+                          }`}
+                        >
+                          {preset.label}
+                          <span className={`block text-[10px] font-medium ${active ? 'text-amber-100' : 'text-slate-500'}`}>{preset.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <label className="flex items-center space-x-2">
+                      <span className="text-[10px] text-slate-600">Desconto (%):</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="100"
+                        value={discountPct}
+                        onChange={(e) => setDiscountPct(parseFloat(e.target.value) || 0)}
+                        className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                      />
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <span className="text-[10px] text-slate-600">Loja cobre (%):</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="100"
+                        value={storeSharePct}
+                        onChange={(e) => setStoreSharePct(parseFloat(e.target.value) || 0)}
+                        className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    O cliente paga {Math.round((100 - discountPct) * 10) / 10}% do preço de lista. Use os mesmos números da oferta no portal da 99.
+                  </p>
                 </div>
               )}
             </div>
@@ -461,33 +467,26 @@ export const NineninePricingTab: React.FC<NineninePricingTabProps> = ({ sheets, 
       // em vez do antigo "custo × 2,5" arbitrário e desconectado da configuração real.
       const basePrice = sheet.sellingPrice > 0 ? sheet.sellingPrice : calculateSuggestedPrice(sheet.costPerPortion);
 
-                  // Campaigns sum (cumulative on 99Food as requested)
-                  let totalCampaignPct = 0;
                   const activeCampaignsList: string[] = [];
-
-                  if (enableMyInvestment) {
-                    totalCampaignPct += myInvestmentPct;
-                    activeCampaignsList.push('Meu Inv.');
-                  }
-                  if (enableNinetyNineInvestment) {
-                    totalCampaignPct += ninetyNineInvestmentPct;
-                    activeCampaignsList.push('Inv. 99');
-                  }
-                  if (enableLogisticsCampaign) {
-                    totalCampaignPct += logisticsCampaignPct;
-                    activeCampaignsList.push('Frete Grátis');
-                  }
+                  if (enableDiscount) activeCampaignsList.push(`Desconto ${discountPct}% (loja ${storeSharePct}%)`);
+                  if (enableLogisticsCampaign) activeCampaignsList.push('Frete Grátis');
+                  const totalCampaignPct = (enableDiscount ? discountPct : 0) + (enableLogisticsCampaign ? logisticsCampaignPct : 0);
 
                   const logisticsFeeAddon = logisticsPlan === 'platform' ? additionalLogisticsFee : 0;
 
-                  // Formula: P_99 = (basePrice + logisticsFeeAddon) / (1 - (taxTotal + totalCampaign) / 100)
-                  const totalDeductionPct = totalTaxPercent + totalCampaignPct;
-                  const deductionDecimal = totalDeductionPct / 100;
-                  const divisor = 1 - deductionDecimal;
+                  // Preço de lista = (preço de balcão + entrega) ÷ fração do preço de lista que chega à loja
+                  // (ver nineninePriceDivisor: o desconto reduz o que o cliente paga, as taxas incidem
+                  // sobre esse valor e a 99 devolve a parte dela do desconto).
+                  const divisor = nineninePriceDivisor({
+                    taxPct: totalTaxPercent,
+                    discountPct: enableDiscount ? discountPct : 0,
+                    storeSharePct,
+                    logisticsPct: enableLogisticsCampaign ? logisticsCampaignPct : 0,
+                  });
                   const ninenineSuggestedPrice = divisor > 0 ? (basePrice + logisticsFeeAddon) / divisor : basePrice * 1.5;
 
-                  // Net revenue received by restaurant after 99Food's own fees and campaigns:
-                  const netReceived = ninenineSuggestedPrice * (1 - (totalTaxPercent / 100) - (totalCampaignPct / 100)) - logisticsFeeAddon;
+                  // O que a loja recebe de fato, depois das taxas da 99 e da sua parte do desconto:
+                  const netReceived = ninenineSuggestedPrice * divisor - logisticsFeeAddon;
                   // Margem de verdade: também desconta Custo Fixo (a mesma % do faturamento, sobre o preço de
                   // balcão do prato — o custo fixo dele não muda por vender pelo app) e os
                   // Impostos do PRÓPRIO restaurante (Simples Nacional etc.) — esses continuam
