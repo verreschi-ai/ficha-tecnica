@@ -382,7 +382,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             onClick={() => onNavigateTab('receitas')}
             className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center justify-between cursor-pointer group"
           >
-            <span>Ver Receitas Base</span>
+            <span>Cadastro de Receitas</span>
             <ArrowUpRight size={14} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </button>
         </div>
@@ -439,7 +439,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             onClick={() => onNavigateTab('itens')}
             className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center justify-between cursor-pointer group"
           >
-            <span>Gerenciar Itens</span>
+            <span>Cadastro de Itens</span>
             <ArrowUpRight size={14} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </button>
         </div>

@@ -60,8 +60,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'OPERACIONAL',
       items: [
         { id: 'dashboard' as ActiveTabType, label: 'Painel Principal', icon: LayoutDashboard },
-        { id: 'itens' as ActiveTabType, label: 'Itens de Estoque', icon: Package },
-        { id: 'receitas' as ActiveTabType, label: 'Receitas Base', icon: BookOpen },
+        { id: 'itens' as ActiveTabType, label: 'Cadastro de Itens', icon: Package },
+        { id: 'receitas' as ActiveTabType, label: 'Cadastro de Receitas', icon: BookOpen },
         { id: 'fichas' as ActiveTabType, label: 'Cadastro de Produtos', icon: Layers, badge: totalProductsCount },
       ]
     },
@@ -189,7 +189,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <nav className="p-3 space-y-4">
             {navSections.map((section, sIdx) => (
               <div key={sIdx} className="space-y-1">
-                <p className="px-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                <p className="flex items-center gap-2 px-3 py-1.5 mb-1 rounded-lg bg-[#F5EFE8] border border-[#E5D7C8] text-[13px] font-black uppercase tracking-wide text-[#2A1D17]">
+                  <span className="w-1 h-4 rounded-full bg-[#38261E] shrink-0" aria-hidden="true" />
                   {section.title}
                 </p>
                 {section.items.map((item) => {
