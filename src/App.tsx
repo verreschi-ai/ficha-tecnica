@@ -936,6 +936,8 @@ export function App() {
   // true quando a última tentativa de falar com a nuvem falhou -- mostra um aviso fixo
   // pra falha de sincronização nunca ficar silenciosa.
   const [syncError, setSyncError] = useState(false);
+  // Código do último erro de sincronização, mostrado no aviso pra facilitar o suporte.
+  const [syncErrorCode, setSyncErrorCode] = useState('');
 
   const hasRealContent = (d: any) =>
     !!d && (((d.sheets && d.sheets.length > 0)) || (d.rawIngredients && d.rawIngredients.length > 0));
@@ -984,9 +986,10 @@ export function App() {
       try {
         cloudData = await fetchUserDataFromFirestore(cleanEmail);
         setSyncError(false);
-      } catch (e) {
+      } catch (e: any) {
         // Sem internet, sem sessão no Firebase ou regra de segurança negando: segue só
         // com o que já tem localmente, mas avisa o usuário.
+        setSyncErrorCode(String(e?.code || e?.message || 'erro desconhecido').slice(0, 80));
         setSyncError(true);
       }
       if (cancelled) return;
@@ -1264,6 +1267,7 @@ export function App() {
                   Ele continua salvo neste aparelho, mas não vai aparecer em outro computador até a sincronização voltar.
                   Clique em <strong>Sair</strong> e entre de novo; se o aviso continuar, avise o suporte.
                 </p>
+                {syncErrorCode && <p className="text-red-700">Código: {syncErrorCode}</p>}
               </div>
             </div>
           )}

@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { 
   getFirestore, 
+  initializeFirestore, 
   collection, 
   doc, 
   getDoc, 
@@ -38,7 +39,18 @@ const firebaseConfig = {
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-export const db = getFirestore(app);
+// Auto-detecção de long polling: o canal padrão (WebChannel) fica pendurado sem erro em
+// alguns navegadores de celular (Safari/iOS) e redes que seguram a conexão -- o cadastro
+// nunca chegava e nada avisava. Com a detecção, o SDK troca sozinho para long polling.
+const createDb = () => {
+  try {
+    return initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  } catch {
+    // Já inicializado (recarga a quente em desenvolvimento).
+    return getFirestore(app);
+  }
+};
+export const db = createDb();
 export const auth = getAuth(app);
 
 export function validatePassword(password: string): { valid: boolean; message?: string } {
@@ -152,7 +164,13 @@ export interface SyncedUserData {
 export async function fetchUserDataFromFirestore(email: string): Promise<SyncedUserData | null> {
   try {
     const ref = doc(db, 'userData', email.trim().toLowerCase());
-    const snap = await getDoc(ref);
+    // Sem resposta em 20 s vira erro: melhor avisar o usuário do que ficar esperando mudo.
+    const snap = await Promise.race([
+      getDoc(ref),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(Object.assign(new Error('Tempo esgotado ao buscar o cadastro na nuvem.'), { code: 'timeout' })), 20000)
+      ),
+    ]);
     if (!snap.exists()) return null;
     const raw = snap.data() as any;
     // O cadastro é guardado como um texto JSON único (ver saveUserDataToFirestore).
