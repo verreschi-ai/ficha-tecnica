@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { TechnicalSheet, AppSettings } from '../types';
 import { Store, Search, Printer, Calculator, Info, Gift, Tag, Flame } from 'lucide-react';
 import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
+import { classifyMargin, riskLimit } from '../utils/marginStatus';
 
 interface PDVLojaTabProps {
   sheets: TechnicalSheet[];
@@ -61,8 +62,9 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
       const profitPct = activePrice > 0 ? Number((100 - (cmvPct + fixedPct + variableCostPct + taxRate)).toFixed(1)) : 0;
 
       let status: 'healthy' | 'warning' | 'danger' = 'healthy';
-      if (profitPct < 10) status = 'danger';
-      else if (profitPct < targetMargin) status = 'warning';
+      const level = classifyMargin(profitPct, targetMargin);
+      if (level === 'loss' || level === 'risk') status = 'danger';
+      else if (level === 'tight') status = 'warning';
 
       const hasPromo = enableFreeFee || enableDiscount;
 
@@ -319,7 +321,7 @@ export const PDVLojaTab: React.FC<PDVLojaTabProps> = ({
                     <td className="py-4 px-4 text-right font-mono">
                       <span className={`px-2.5 py-1 rounded-lg font-bold ${
                         m.profitPct >= targetMargin ? 'bg-emerald-100 text-emerald-800' :
-                        m.profitPct >= 10 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                        m.profitPct >= riskLimit(targetMargin) ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                       }`}>
                         {m.profitPct > 0 ? `+${m.profitPct.toFixed(1)}%` : `${m.profitPct.toFixed(1)}%`}
                       </span>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { formatNumeroBRL } from '../utils/formatters';
 import { PrintReportButton } from './PrintReportButton';
+import { classifyMargin, riskLimit } from '../utils/marginStatus';
 
 interface PriceSimulatorTabProps {
   sheets: TechnicalSheet[];
@@ -257,9 +258,9 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
 
       // Status
       let simStatus: 'healthy' | 'warning' | 'danger' = 'healthy';
-      if (simProfitPct < 0) simStatus = 'danger';
-      else if (simProfitPct < 10) simStatus = 'danger';
-      else if (simProfitPct < targetMargin) simStatus = 'warning';
+      const simLevel = classifyMargin(simProfitPct, targetMargin);
+      if (simLevel === 'loss' || simLevel === 'risk') simStatus = 'danger';
+      else if (simLevel === 'tight') simStatus = 'warning';
 
       return {
         ...sheet,
@@ -959,9 +960,9 @@ export const PriceSimulatorTab: React.FC<PriceSimulatorTabProps> = ({
                       {/* Margem Líquida */}
                       <td className="p-3.5 text-right font-mono">
                         <div className={`font-black ${
-                          sheet.simProfitPct >= (appSettings.targetReturnMargin || 20)
+                          sheet.simProfitPct >= (targetMarginGoal || 20)
                             ? 'text-emerald-700'
-                            : sheet.simProfitPct >= 10
+                            : sheet.simProfitPct >= riskLimit(targetMarginGoal || 20)
                             ? 'text-amber-700'
                             : 'text-red-700'
                         }`}>

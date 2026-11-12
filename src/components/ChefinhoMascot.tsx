@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChefHat, MessageCircle, X, Sparkles, Send, Lightbulb, TrendingUp, RefreshCw, Settings } from 'lucide-react';
 import { TechnicalSheet, User, RawIngredientItem, FixedCostsData, VariableCostsData } from '../types';
+import { classifyMargin } from '../utils/marginStatus';
 
 interface ChefinhoMascotProps {
   sheets: TechnicalSheet[];
@@ -8,6 +9,7 @@ interface ChefinhoMascotProps {
   fixedCosts?: FixedCostsData;
   variableCosts?: VariableCostsData;
   currentUser?: User | null;
+  targetMargin?: number; // Margem Desejada (%) das Configurações; define as faixas saudável/apertada/risco
 }
 
 export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({ 
@@ -15,7 +17,8 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
   rawIngredients = [], 
   fixedCosts, 
   variableCosts, 
-  currentUser 
+  currentUser, 
+  targetMargin = 20 
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -105,7 +108,8 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
     rawItems: RawIngredientItem[], 
     fixCosts?: FixedCostsData, 
     varCosts?: VariableCostsData, 
-    name?: string
+    name?: string,
+    meta: number = 20
   ) => {
     const lower = input.toLowerCase();
     const displayName = name && name.trim() ? name.trim() : 'Chefe';
@@ -114,9 +118,10 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
     const mascotDivisor = sheets.length > 0 ? sheets.length : 1;
     const avgCMV = (sheets.reduce((acc, curr) => acc + (typeof curr.cmv === 'number' && !isNaN(curr.cmv) ? curr.cmv : 30.0), 0) / mascotDivisor).toFixed(1);
     const avgMargin = (sheets.reduce((acc, curr) => acc + (typeof curr.margin === 'number' && !isNaN(curr.margin) ? curr.margin : 70.0), 0) / mascotDivisor).toFixed(1);
-    const saudaveis = sheets.filter(s => s.margin >= 20).length;
-    const apertadas = sheets.filter(s => s.margin >= 10 && s.margin < 20).length;
-    const risco = sheets.filter(s => s.margin < 10).length;
+    const nivel = (s: TechnicalSheet) => classifyMargin(s.margin, meta);
+    const saudaveis = sheets.filter(s => nivel(s) === 'healthy').length;
+    const apertadas = sheets.filter(s => nivel(s) === 'tight').length;
+    const risco = sheets.filter(s => nivel(s) === 'risk' || nivel(s) === 'loss').length;
 
     const totalFixedExpenses = fixCosts?.fixedExpenses?.reduce((acc, f) => acc + f.amount, 0) || 0;
     const employees = fixCosts?.employees || [];
@@ -215,7 +220,7 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
         })
       });
       const data = await res.json();
-      const reply = data.reply || getBotReply(text, sheets, rawIngredients, fixedCosts, variableCosts, preferredName);
+      const reply = data.reply || getBotReply(text, sheets, rawIngredients, fixedCosts, variableCosts, preferredName, targetMargin);
 
       setIsTyping(false);
       setMessages(prev => [...prev, { sender: 'chefinho', text: '' }]);
@@ -240,7 +245,7 @@ export const ChefinhoMascot: React.FC<ChefinhoMascotProps> = ({
 
     } catch (err) {
       // Fallback to local rule-based reply if network fails
-      const reply = getBotReply(text, sheets, rawIngredients, fixedCosts, variableCosts, preferredName);
+      const reply = getBotReply(text, sheets, rawIngredients, fixedCosts, variableCosts, preferredName, targetMargin);
       setIsTyping(false);
       setMessages(prev => [...prev, { sender: 'chefinho', text: '' }]);
 

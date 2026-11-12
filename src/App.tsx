@@ -1725,6 +1725,7 @@ export function App() {
         fixedCosts={fixedCosts}
         variableCosts={variableCosts}
         currentUser={currentUser} 
+        targetMargin={Number(appSettings.targetReturnMargin) || 20}
       />
 
       {/* PRINT MODAL FOR KITCHEN WALL */}

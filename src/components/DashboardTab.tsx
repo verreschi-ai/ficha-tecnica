@@ -20,6 +20,7 @@ import {
   BarChart3,
   PieChart as PieChartIcon
 } from 'lucide-react';
+import { classifyMargin, riskLimit } from '../utils/marginStatus';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 
 interface DashboardTabProps {
@@ -95,10 +96,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   }));
 
   // 2. Saúde Financeira dos Pratos (4 Tiers)
-  const pratosSaudaveis = sheetsWithProfit.filter(s => s.calcProfitPct >= 20);
-  const pratosApertados = sheetsWithProfit.filter(s => s.calcProfitPct >= 10 && s.calcProfitPct < 20);
-  const pratosRisco = sheetsWithProfit.filter(s => s.calcProfitPct >= 0 && s.calcProfitPct < 10);
-  const pratosNaoVender = sheetsWithProfit.filter(s => s.calcProfitPct < 0);
+  // Mesmas faixas do Relatório de Precificação, ancoradas na Margem Desejada (ver utils/marginStatus).
+  const metaMargem = Number(appSettings.targetReturnMargin) || 20;
+  const limiteRisco = riskLimit(metaMargem);
+  const fmtPct = (n: number) => String(Number(n.toFixed(1))).replace('.', ',');
+  const pratosSaudaveis = sheetsWithProfit.filter(s => classifyMargin(s.calcProfitPct, metaMargem) === 'healthy');
+  const pratosApertados = sheetsWithProfit.filter(s => classifyMargin(s.calcProfitPct, metaMargem) === 'tight');
+  const pratosRisco = sheetsWithProfit.filter(s => classifyMargin(s.calcProfitPct, metaMargem) === 'risk');
+  const pratosNaoVender = sheetsWithProfit.filter(s => classifyMargin(s.calcProfitPct, metaMargem) === 'loss');
 
   const totalPratos = sheets.length || 1;
   const pctSaudaveis = Math.round((pratosSaudaveis.length / totalPratos) * 100);
@@ -117,9 +122,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   // Data for Health Pie Chart (4 categories)
   const healthPieData = [
-    { name: 'Saudável (>= 20%)', value: pratosSaudaveis.length, color: '#10b981' },
-    { name: 'Apertado (10-20%)', value: pratosApertados.length, color: '#f59e0b' },
-    { name: 'Em Risco (0-10%)', value: pratosRisco.length, color: '#f97316' },
+    { name: `Saudável (>= ${fmtPct(metaMargem)}%)`, value: pratosSaudaveis.length, color: '#10b981' },
+    { name: `Apertado (${fmtPct(limiteRisco)}-${fmtPct(metaMargem)}%)`, value: pratosApertados.length, color: '#f59e0b' },
+    { name: `Em Risco (0-${fmtPct(limiteRisco)}%)`, value: pratosRisco.length, color: '#f97316' },
     { name: 'Não Vender (< 0%)', value: pratosNaoVender.length, color: '#dc2626' },
   ].filter(d => d.value > 0);
 
@@ -211,7 +216,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     .slice(0, 6);
 
   const attentionData = sheetsWithProfit
-    .filter(s => s.calcProfitPct < 15)
+    .filter(s => s.calcProfitPct < metaMargem)
     .map(s => ({
       name: s.name.length > 14 ? s.name.substring(0, 12) + '...' : s.name,
       fullName: s.name,
@@ -223,11 +228,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   // Pratos Estrelas (Campeões) e Vilões
   const pratosEstrelas = [...sheetsWithProfit]
-    .filter(s => s.calcProfitPct >= 20 && (s.cmv <= 32 || isNaN(s.cmv)))
+    .filter(s => s.calcProfitPct >= metaMargem && (s.cmv <= 32 || isNaN(s.cmv)))
     .slice(0, 3);
 
   const pratosViloes = [...sheetsWithProfit]
-    .filter(s => s.calcProfitPct < 10)
+    .filter(s => s.calcProfitPct < limiteRisco)
     .sort((a, b) => a.calcProfitPct - b.calcProfitPct)
     .slice(0, 3);
 
@@ -722,7 +727,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
               <h4 className="font-bold text-sm text-slate-900 mt-2">Pratos com Maior Margem</h4>
               <p className="text-[11px] text-slate-600 mt-1">
-                Pratos com margem líquida acima de 20% e CMV sob controle. Excelentes para posicionar no topo do cardápio ou criar combos.
+                Pratos com margem líquida a partir de {fmtPct(metaMargem)}% e CMV sob controle. Excelentes para posicionar no topo do cardápio ou criar combos.
               </p>
               <div className="mt-3 space-y-1.5 border-t border-emerald-100 pt-2">
                 {pratosEstrelas.length > 0 ? (
@@ -733,7 +738,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </div>
                   ))
                 ) : (
-                  <span className="text-xs text-slate-400 italic">Nenhum prato com margem &gt; 20% ainda.</span>
+                  <span className="text-xs text-slate-400 italic">Nenhum prato com margem a partir de {fmtPct(metaMargem)}% ainda.</span>
                 )}
               </div>
             </div>
@@ -757,7 +762,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
               <h4 className="font-bold text-sm text-slate-900 mt-2">Pratos Queimadores de Margem</h4>
               <p className="text-[11px] text-slate-600 mt-1">
-                Pratos com margem inferior a 10% ou prejuízo. Necessitam de reajuste de preço ou redução de porção.
+                Pratos com margem inferior a {fmtPct(limiteRisco)}% ou prejuízo. Necessitam de reajuste de preço ou redução de porção.
               </p>
               <div className="mt-3 space-y-1.5 border-t border-red-100 pt-2">
                 {pratosViloes.length > 0 ? (
@@ -823,7 +828,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <span className="bg-orange-600 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-2xs">DIAGNÓSTICO AUTOMÁTICO</span>
             </div>
             <p className="text-xs text-slate-700 leading-relaxed max-w-3xl">
-              Você tem <strong>{totalItensCadastrados} itens de estoque</strong> e <strong>{totalReceitasCadastradas} receitas/pratos</strong> cadastrados. Seu cardápio conta com <strong>{pratosSaudaveis.length} pratos com margem saudável (20% ou mais)</strong>, <strong>{pratosApertados.length} pratos com margem apertada (10% a 19,9%)</strong> e <strong>{pratosRisco.length + pratosNaoVender.length} em risco ou prejuízo</strong>. Recomendo ajustar os preços no Relatório de Precificação para equilibrar a lucratividade.
+              Você tem <strong>{totalItensCadastrados} itens de estoque</strong> e <strong>{totalReceitasCadastradas} receitas/pratos</strong> cadastrados. Seu cardápio conta com <strong>{pratosSaudaveis.length} pratos com margem saudável ({fmtPct(metaMargem)}% ou mais)</strong>, <strong>{pratosApertados.length} pratos com margem apertada ({fmtPct(limiteRisco)}% a {fmtPct(metaMargem - 0.1)}%)</strong> e <strong>{pratosRisco.length + pratosNaoVender.length} em risco ou prejuízo</strong>. Recomendo ajustar os preços no Relatório de Precificação para equilibrar a lucratividade.
             </p>
           </div>
         </div>
