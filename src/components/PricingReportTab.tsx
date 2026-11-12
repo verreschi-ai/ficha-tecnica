@@ -4,6 +4,7 @@ import { TechnicalSheet, AppSettings } from '../types';
 import { DreUnitariaModal } from './DreUnitariaModal';
 import { PrintReportButton } from './PrintReportButton';
 import { FilterSelect, ALL_FILTER, uniqueOptions } from './FilterSelect';
+import { classifyMargin, riskLimit } from '../utils/marginStatus';
 
 interface PricingReportTabProps {
   sheets: TechnicalSheet[];
@@ -87,9 +88,10 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
       const breakEvenDivisor = 1 - (fixedCostPct + variableCostPct + taxRate) / 100;
       const totalCostPrice = breakEvenDivisor > 0 ? Number((costInsumo / breakEvenDivisor).toFixed(2)) : 0;
 
-      let status: SheetMetrics['status'] = 'healthy';
-      if (profitPct < 10) status = 'danger';
-      else if (profitPct < targetMargin) status = 'warning';
+      // Mesmas faixas nos cards, no filtro e na tabela (ver utils/marginStatus): prejuízo e risco
+      // formam o grupo 'danger' dos cards.
+      const level = classifyMargin(profitPct, targetMargin);
+      const status: SheetMetrics['status'] = level === 'healthy' ? 'healthy' : level === 'tight' ? 'warning' : 'danger';
 
       return {
         sheet, costInsumo, sellPrice, suggestedPrice, activePrice, cmvPct,
@@ -175,7 +177,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
           className={`bento-card cursor-pointer ${statusFilter === 'healthy' ? 'border-emerald-600 ring-2 ring-emerald-500/10 bg-emerald-50/30' : 'hover:border-emerald-200'}`}
         >
           <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
-            <CheckCircle2 size={15} /> Margem Saudável (&ge; {appSettings.targetReturnMargin}%)
+            <CheckCircle2 size={15} /> Margem Saudável (&ge; {targetMargin.toFixed(1)}%)
           </span>
           <div className="flex items-baseline justify-between mt-3">
             <span className="text-3xl font-black font-mono text-emerald-900">{healthyCount}</span>
@@ -189,7 +191,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
         >
           <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
             <AlertTriangle size={15} /> Margem Apertada
-            ({targetMargin > 10 ? `10-${(targetMargin - 0.1).toFixed(1)}` : `< ${targetMargin.toFixed(1)}`}%)
+            ({riskLimit(targetMargin).toFixed(1)}% a {(targetMargin - 0.1).toFixed(1)}%)
           </span>
           <div className="flex items-baseline justify-between mt-3">
             <span className="text-3xl font-black font-mono text-amber-900">{warningCount}</span>
@@ -202,7 +204,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
           className={`bento-card cursor-pointer ${statusFilter === 'danger' ? 'border-red-600 ring-2 ring-red-500/10 bg-red-50/30' : 'hover:border-red-200'}`}
         >
           <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider flex items-center gap-1.5">
-            <ShieldAlert size={15} /> Em Risco / Prejuízo (&lt; 10%)
+            <ShieldAlert size={15} /> Em Risco / Prejuízo (&lt; {riskLimit(targetMargin).toFixed(1)}%)
           </span>
           <div className="flex items-baseline justify-between mt-3">
             <span className="text-3xl font-black font-mono text-red-900">{dangerCount}</span>
@@ -337,7 +339,7 @@ export const PricingReportTab: React.FC<PricingReportTabProps> = ({
                       </td>
 
                       <td className="p-3.5 text-right font-mono min-w-[110px]">
-                        <div className={`font-black ${profitPct >= targetMargin ? 'text-emerald-700' : profitPct >= 10 ? 'text-amber-700' : 'text-red-700'}`}>
+                        <div className={`font-black ${profitPct >= targetMargin ? 'text-emerald-700' : profitPct >= riskLimit(targetMargin) ? 'text-amber-700' : 'text-red-700'}`}>
                           R$ {profitValue.toFixed(2).replace('.', ',')}
                         </div>
                         <div className="text-[10px] text-slate-500">
