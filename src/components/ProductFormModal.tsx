@@ -117,28 +117,30 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const currentSelectedSource = getSourceDetails(selectedSourceId);
 
+  // Lista de ingredientes com o item/receita escolhido na lista somado a ela
+  const withSelectedSource = (list: typeof ingredients) => {
+    if (!selectedSourceId || !currentSelectedSource) return list;
+
+    const existingIdx = list.findIndex(i => i.name.toLowerCase() === currentSelectedSource.name.toLowerCase());
+    if (existingIdx >= 0) {
+      return list.map((ing, idx) => (idx === existingIdx ? { ...ing, qty: ing.qty + newIngQty } : ing));
+    }
+    return [
+      ...list,
+      {
+        name: currentSelectedSource.name,
+        qty: newIngQty,
+        unit: currentSelectedSource.unit,
+        unitPrice: currentSelectedSource.unitPrice,
+        type: currentSelectedSource.type
+      }
+    ];
+  };
+
   // Add ingredient
   const handleAddSelectedSource = () => {
     if (!selectedSourceId || !currentSelectedSource) return;
-
-    const existingIdx = ingredients.findIndex(i => i.name.toLowerCase() === currentSelectedSource.name.toLowerCase());
-    if (existingIdx >= 0) {
-      const updated = [...ingredients];
-      updated[existingIdx].qty += newIngQty;
-      setIngredients(updated);
-    } else {
-      setIngredients([
-        ...ingredients,
-        {
-          name: currentSelectedSource.name,
-          qty: newIngQty,
-          unit: currentSelectedSource.unit,
-          unitPrice: currentSelectedSource.unitPrice,
-          type: currentSelectedSource.type
-        }
-      ]);
-    }
-
+    setIngredients(withSelectedSource(ingredients));
     setSelectedSourceId('');
     setNewIngQty(1);
   };
@@ -178,6 +180,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    // Item escolhido na lista mas sem clicar em "+": entra junto ao salvar. Antes ele ficava de fora
+    // em silêncio e o produto (ex.: bebida de revenda, que é 1 item só) era salvo sem ingredientes e
+    // com custo R$ 0,00.
+    const finalIngredients = withSelectedSource(ingredients);
+    if (finalIngredients.length === 0 &&
+        !window.confirm('Este produto está sem nenhum item ou receita, então o custo ficará R$ 0,00. Salvar mesmo assim?')) {
+      return;
+    }
+
+    const finalTotalCost = finalIngredients.reduce((acc, ing) => acc + ing.qty * ing.unitPrice, 0);
+    const finalCostPerPortion = yieldServings > 0 ? finalTotalCost / yieldServings : finalTotalCost;
+    const finalCmv = sellingPrice > 0 ? Number(((finalCostPerPortion / sellingPrice) * 100).toFixed(1)) : 0;
+    const finalMargin = sellingPrice > 0 ? Number((100 - finalCmv).toFixed(1)) : 0;
+
     const savedSheet: TechnicalSheet = {
       id: initialSheet?.id || `ft-${Date.now()}`,
       code: initialSheet?.code || `FT-${(existingCount + 1).toString().padStart(3, '0')}`,
@@ -188,16 +204,16 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       yieldServings,
       portionWeight: `${yieldServings > 0 ? (1000 / yieldServings).toFixed(0) : 350}g`,
       prepTime,
-      costPerPortion,
-      totalRecipeCost,
+      costPerPortion: finalCostPerPortion,
+      totalRecipeCost: finalTotalCost,
       sellingPrice,
-      cmv,
-      margin,
+      cmv: finalCmv,
+      margin: finalMargin,
       status: 'ideal',
       // O tipo Ingredient (e o motor de recálculo em cascata no App.tsx) espera grossQty/netQty/fc/
       // totalCost — não "qty". Salvar como "qty" faz grossQty ficar undefined, e undefined * preço
       // vira NaN, que o `Number(...) || 0` de todo o resto do app disfarça como um custo de R$ 0,00.
-      ingredients: ingredients.map(({ name, qty, unit, unitPrice }) => ({
+      ingredients: finalIngredients.map(({ name, qty, unit, unitPrice }) => ({
         name,
         grossQty: qty,
         netQty: qty,
