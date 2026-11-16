@@ -780,6 +780,15 @@ DIRETRIZES DE PERSONALIDADE E TOM DE VOZ:
   });
 
   // Health check
+  // Ligação com o app de estoque da Don Giovanni: diz só se o e-mail informado é a conta da loja
+  // (EXPORT_OWNER_EMAIL). O próprio app usa para mostrar o painel "Estoque da loja", e o estoque usa para
+  // confirmar quem está chamando (o login Firebase é conferido lá). Não devolve nenhum dado.
+  app.get("/api/estoque/dono", rateLimit(60, 5 * 60 * 1000), (req, res) => {
+    const dono = (process.env.EXPORT_OWNER_EMAIL || "").trim().toLowerCase();
+    const email = String(req.query.email || "").trim().toLowerCase();
+    res.json({ dono: !!dono && !!email && email === dono });
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });

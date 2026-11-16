@@ -38,6 +38,9 @@ import { ProductFormModal } from './components/ProductFormModal';
 import { CommunityTab } from './components/CommunityTab';
 import { CustosFixosTab } from './components/CustosFixosTab';
 import { CustosVariaveisTab } from './components/CustosVariaveisTab';
+import { EstoqueLojaPanel } from './components/EstoqueLojaPanel';
+import { ehContaDaLoja, enviarInsumosAoEstoque } from './services/estoqueService';
+import { assinaturaInsumos } from './utils/estoqueSync';
 import { ItensReceitasTab } from './components/ItensReceitasTab';
 import { AdminTab } from './components/AdminTab';
 import { ConfiguracoesTab } from './components/ConfiguracoesTab';
@@ -861,6 +864,19 @@ export function App() {
     setTimeout(() => setProductImportMessage(null), 5000);
   };
 
+  // Preços vindos do estoque da loja (último preço pago nas notas), aplicados de uma vez.
+  const handleAplicarPrecosDoEstoque = (mudancas: { id: string; unitPrice: number; supplier: string | null }[]) => {
+    const porId = new Map(mudancas.map((m) => [m.id, m]));
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const rawList = rawIngredients.map((r) => {
+      const m = porId.get(r.id);
+      return m ? { ...r, unitPrice: m.unitPrice, supplier: m.supplier || r.supplier, lastUpdated: hoje } : r;
+    });
+    const updatedRaw = recalculateRawIngredients(rawList);
+    setRawIngredients(updatedRaw);
+    setSheets(recalculateSheets(sheets, updatedRaw));
+  };
+
   const handleUpdateIngredient = (item: RawIngredientItem) => {
     const rawList = rawIngredients.map((r) => (r.id === item.id ? item : r));
     const updatedRaw = recalculateRawIngredients(rawList);
@@ -1105,6 +1121,44 @@ export function App() {
       });
     }, 2000);
   }, [sheets, rawIngredients, fixedCosts, variableCosts, appSettings, categoriesList, suggestions, currentUser]);
+
+  // Ligação com o app de estoque da Don Giovanni (só na conta da loja; ver services/estoqueService.ts).
+  const [contaDaLoja, setContaDaLoja] = useState(false);
+  React.useEffect(() => {
+    const email = currentUser?.email;
+    if (!email) {
+      setContaDaLoja(false);
+      return;
+    }
+    let ativo = true;
+    ehContaDaLoja(email).then((sim) => {
+      if (ativo) setContaDaLoja(sim);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [currentUser?.email]);
+
+  // Insumo criado, renomeado ou com unidade trocada aqui vai para o estoque (só quando a lista muda nisso,
+  // não a cada ajuste de preço). Falha não atrapalha o uso: tenta de novo na próxima mudança.
+  const ultimaAssinaturaEstoqueRef = React.useRef<string | null>(null);
+  const timerEstoqueRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    if (!contaDaLoja || !dataReadyRef.current) return;
+    const assinatura = assinaturaInsumos(rawIngredients);
+    if (assinatura === ultimaAssinaturaEstoqueRef.current) return;
+    if (timerEstoqueRef.current) clearTimeout(timerEstoqueRef.current);
+    timerEstoqueRef.current = setTimeout(() => {
+      enviarInsumosAoEstoque(rawIngredients)
+        .then(() => {
+          ultimaAssinaturaEstoqueRef.current = assinatura;
+        })
+        .catch((e) => console.warn('[estoque] Não consegui sincronizar os insumos:', e?.message || e));
+    }, 4000);
+    return () => {
+      if (timerEstoqueRef.current) clearTimeout(timerEstoqueRef.current);
+    };
+  }, [contaDaLoja, rawIngredients]);
 
   // Synchronized Settings and Fixed Costs Handlers (Indefinite Persistence & Global Propagation)
   const handleUpdateAppSettings = (newSettings: AppSettings) => {
@@ -1460,6 +1514,13 @@ export function App() {
           )}
 
           {/* TAB 2: ITENS (SPEC 3.2) */}
+          {activeTab === 'itens' && contaDaLoja && (
+            <EstoqueLojaPanel
+              ingredients={rawIngredients}
+              onAplicarPrecos={handleAplicarPrecosDoEstoque}
+              onTrazerItens={handleAddIngredient}
+            />
+          )}
           {activeTab === 'itens' && (
             <ItensReceitasTab
               mode="itens"
